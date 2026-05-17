@@ -1,0 +1,14 @@
+{% block content %}
+{% endblock %}
+<header class="header">
+    <div class="header-left">
+        <h2>SISEM</h2>
+    </div>
+    <div class="header-right">
+        <span>Welcome again, {{ session['username'] }}</span>
+        <button class="log-out">
+            <a href="/logout" style="color: azure;">Cerrar sesión</a>
+        </button>
+
+    </div>
+</header>

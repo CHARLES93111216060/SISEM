@@ -1,0 +1,31 @@
+{% extends "layout/base.html" %}
+
+{% block title %}
+    Formulario
+{% endblock %}
+
+{% block content %}
+<div class="container-mt4">
+    <div class="card shadow-p4">
+        <h2 class="mb-4">
+            Mantenimiento
+        </h2>
+
+        <!-- Selector -->
+        <div class="mb-4">
+            <label class="form-label">
+                Mantenimiento:
+            </label>
+            <select id="formSelector" class="form-select">
+                <option value="">-- Seleccione --</option>
+                <option value="reporte_general">Reporte general</option>
+                <option value="Protocolo_de_mantenimiento">Protocolo de mantenimiento</option>
+                <option value="consulta_reporte">Consultar reporte</option>
+            </select>
+        </div>
+        <div id="dynamicform"></div>
+    </div>
+</div>
+
+<script src="{{ url_for('static', filename='js/forms.js') }}"></script>
+{% endblock %}
