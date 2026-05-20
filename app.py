@@ -43,14 +43,19 @@ def logout():
     session.clear()
     return redirect(url_for('login'))
 
+@sisem.route('/', methods=["GET", "POST"])
+def home():
+    return redirect(url_for('login'))
+
 # ruta del login
-@sisem.route('/', methods=['GET', 'POST'])
+@sisem.route('/login', methods=['GET', 'POST'])
 def login():
     if request.method == 'POST':
         username = request.form['username']
         password = request.form['password']
         if username == user and password == pws:
             session['username'] = username
+            session.permanent = True
             return redirect(url_for('login_post'))
         else:
             return render_template('login.html', error='Credenciales inválidas')
@@ -137,6 +142,7 @@ def guardar_informe():
         logger.error(f"Error guardando informe: {str(e)}")
         return jsonify({"error": "Error al guardar el informe"}), 500
     
+
 
 if __name__ == '__main__':
     debug_mode = os.environ.get('FLASK_DEBUG', 'True') == 'True'
