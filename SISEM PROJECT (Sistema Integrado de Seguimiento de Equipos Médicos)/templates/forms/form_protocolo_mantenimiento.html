@@ -1,249 +1,311 @@
 <form method="post" id="protocoloForm">
+
+    <!-- ========================= -->
+    <!-- DATOS GENERALES -->
+    <!-- ========================= -->
+
+    <h2>Datos generales</h2>
+
     <div class="mb-3">
         <label class="form-label">
-            fecha de mantenimiento:
+            Fecha de mantenimiento
         </label>
-        <input type="date" class="form-control">
+
+        <input
+            type="date"
+            class="form-control"
+            name="general.fecha_mantenimiento"
+        >
     </div>
 
     <div class="mb-3">
         <label class="form-label">
-            Tipo de equipo:
+            Tipo de equipo
         </label>
-        <select id="equipos" class="form-control">
+
+        <select
+            id="equipos"
+            name="equipo.tipo"
+            class="form-control"
+        >
             <option value="">--Seleccione--</option>
             <option value="bascula">Báscula</option>
-            <option value="infusion">Bomba de infusión</option>
-            <option value="cama">Cama hospitalaria</option>
-            <option value="concentrador">Concentrador de O2</option>
-            <option value="desfibrilador">Desfibrilador</option>
-            <option value="bisturi">Electrobisturí</option>
-            <option value="cardiografo">Electrocardiógrafo</option>
-            <option value="flujometro">Flujómetro</option>
-            <option value="incubadora">Incubadora</option>
-            <option value="anestesia">Máquina de anestesia</option>
-            <option value="signos_vitales">Monitor de signos vitales</option>
-            <option value="neveras">Neveras</option>
-            <option value="oximetro">Oxímetro</option>
-            <option value="succionador">Succionador</option>
-            <option value="tensiometro">Tensiómetro</option>
+            <option value="Bomba_de_infusión">Bomba de infusión</option>
+            <option value="Cama_hospitalaria">Cama hospitalaria</option>
+            <option value="Concentrador_de_O2">Concentrador de O2</option>
+            <option value="Desfibrilador">Desfibrilador</option>
+            <option value="Electrobisturí">Electrobisturí</option>
+            <option value="Electrocardiógrafo">Electrocardiógrafo</option>
+            <option value="Flujómetro">Flujómetro</option>
+            <option value="Incubadora">Incubadora</option>
+            <option value="Máquina_de_anestésia">Máquina de anestésia</option>
+            <option value="Monitor_de_signos_vitales">Monitor de signos vitales</option>
+            <option value="Neveras">Neveras</option>
+            <option value="Oxímetro">Oxímetro</option>
+            <option value="Succionador">Succionador</option>
+            <option value="Tensiómetro">Tensiómetro</option>
             <option value="ventilador">Ventilador</option>
         </select>
     </div>
+
+    <!-- ========================= -->
+    <!-- CLIENTE -->
+    <!-- ========================= -->
 
     <h2>Datos del cliente</h2>
 
     <div class="mb-3">
         <label class="form-label">
-            Hospital / Clínica:
+            Hospital / Clínica
         </label>
-        <select name="cliente" class="form-control">
+
+        <select
+            name="cliente.nombre"
+            class="form-control"
+        >
             <option value="">-- Seleccione --</option>
-            <option value="hospital1">Hospital 1</option>
-            <option value="clinica1">Clínica 1</option>
-            <option value="hospital1">Hospital 2</option>
-            <option value="clinica1">Clínica 2</option>
-        </select>
-    </div>
-    
-    <div class="mb-3">
-        <label class="form-label">
-            Área / Servicio:
-        </label>
-        <select name="areas" class="form-control">
-            <option value="">-- Seleccione --</option>
-            <option value="urgencias">Urgencias</option>
-            <option value="hospitalizacion">Hospitalización</option>
-            <option value="uci">UCI</option>
-            <option value="qx">Cirugía</option>
-        </select>
-    </div>
-
-        <h2>Datos del equipo</h2>
-
-    <div class="mb-3">
-        <label class="form-label">
-            Marca:
-        </label>
-        <input type="text" class="form-control" name="marca">
-    </div>
-
-    <div class="mb-3">
-        <label class="form-label">
-            Modelo:
-        </label>
-        <input type="text" class="form-control" name="modelo">
-    </div>
-
-    <div class="mb-3">
-        <label class="form-label">
-            Número de serie:
-        </label>
-        <input type="text" class="form-control" name="numero_serie">
-    </div>
-
-    <div class="mb-3">
-        <label class="form-label">
-            Número de inventario:
-        </label>
-        <input type="text" class="form-control" name="numero_inventario">
-    </div>
-
-    <div class="mb-3">
-        <label class="form-label">
-            Servicio realizado:
-        </label>
-        <select name="servicio" class="form-control">
-            <option value="">-- Seleccione --</option>
-            <option value="preventivo">Mantenimiento preventivo</option>
-            <option value="correctivo">Mantenimiento correctivo</option>
-            <option value="diagnostico">Diagnostico</option>
-            <option value="soporte">Soporte técnico</option>
-            <option value="accesorio">Instalación de accesorios</option>
-            <option value="otros">Otros</option>
+            <option value="Hospital San José infantil">Hospital San José infantil</option>
+            <option value="SEP">SEP</option>
+            <option value="Multilink">Multilink</option>
         </select>
     </div>
 
     <div class="mb-3">
         <label class="form-label">
-            Efectuar limpieza interna y externa del equipo:
+            Área / Servicio
         </label>
-        <select name="limpieza" class="form-control">
+
+        <select name="cliente.area" class="form-control" >
             <option value="">-- Seleccione --</option>
-            <option value="si">Cumple</option>
-            <option value="no">No cumple</option>
+            <option value="UCI">UCI</option>
+            <option value="Urgencias">Urgencias</option>
+            <option value="Cirugía">Cirugía</option>
+            <option value="Hospitalización">Hospitalización</option>
+            <option value="Obstetricia">Obstetricia</option>
+            <option value="UCI_intermédios">UCI intermédios</option>
+            <option value="Pediatria">Pediatria</option>
+        </select>
+    </div>
+
+    <!-- ========================= -->
+    <!-- EQUIPO -->
+    <!-- ========================= -->
+
+    <h2>Datos del equipo</h2>
+
+    <div class="mb-3">
+        <label class="form-label">
+            Marca
+        </label>
+
+        <input
+            type="text"
+            class="form-control"
+            name="equipo.marca"
+        >
+    </div>
+
+    <div class="mb-3">
+        <label class="form-label">
+            Modelo
+        </label>
+
+        <input
+            type="text"
+            class="form-control"
+            name="equipo.modelo"
+        >
+    </div>
+
+    <div class="mb-3">
+        <label class="form-label">
+            Número de serie
+        </label>
+
+        <input
+            type="text"
+            class="form-control"
+            name="equipo.numero_serie"
+        >
+    </div>
+
+    <div class="mb-3">
+        <label class="form-label">
+            Número de inventario
+        </label>
+
+        <input
+            type="text"
+            class="form-control"
+            name="equipo.numero_inventario"
+        >
+    </div>
+
+    <!-- ========================= -->
+    <!-- SERVICIO -->
+    <!-- ========================= -->
+
+    <h2>Servicio realizado</h2>
+
+    <div class="mb-3">
+        <label class="form-label">
+            Tipo de servicio
+        </label>
+
+        <select
+            name="servicio.tipo"
+            class="form-control"
+        >
+            <option value="">-- Seleccione --</option>
+            <option value="preventivo">
+                Preventivo
+            </option>
+
+            <option value="correctivo">
+                Correctivo
+            </option>
+        </select>
+    </div>
+
+    <div class="mb-3">
+        <label class="form-label">
+            Limpieza interna y externa
+        </label>
+
+        <select
+            name="servicio.limpieza"
+            class="form-control"
+        >
+            <option value="">-- Seleccione --</option>
+            <option value="cumple">Cumple</option>
+            <option value="no_cumple">No cumple</option>
             <option value="na">No aplica</option>
-            <option value="nr">No registra</option>
         </select>
     </div>
 
+    <!-- ========================= -->
+    <!-- FORMULARIO DINÁMICO -->
+    <!-- ========================= -->
 
-    <!-- ingreso de formulario específico para cada uno de los equipos -->
     <div id="formulario_especifico"></div>
 
-    <h2>Tipo de servicio</h2>
-    
+    <!-- ========================= -->
+    <!-- ACTIVIDADES -->
+    <!-- ========================= -->
+
+    <h2>Actividades</h2>
+
     <div class="mb-3">
         <label class="form-label">
             Actividad realizada
         </label>
-        <textarea class="form-control"></textarea>
+
+        <textarea
+            class="form-control"
+            name="servicio.actividad"
+        ></textarea>
     </div>
 
     <div class="mb-3">
         <label class="form-label">
             Observaciones
         </label>
-        <textarea class="form-control"></textarea>
+
+        <textarea
+            class="form-control"
+            name="servicio.observaciones"
+        ></textarea>
     </div>
 
-    <h2>Repuestos o accesorios instalados</h2>
+    <!-- ========================= -->
+    <!-- REPUESTOS -->
+    <!-- ========================= -->
+
+    <h2>Repuestos instalados</h2>
+
+    <div class="row">
+
+        <div class="col-md-3">
+            <input
+                type="number"
+                class="form-control"
+                placeholder="Cantidad"
+                name="repuestos.cantidad_1"
+            >
+        </div>
+
+        <div class="col-md-9">
+            <textarea
+                class="form-control"
+                placeholder="Descripción"
+                name="repuestos.descripcion_1"
+            ></textarea>
+        </div>
+
+    </div>
+
+    <!-- ========================= -->
+    <!-- ESTADO FINAL -->
+    <!-- ========================= -->
+
+    <h2>Estado final</h2>
 
     <div class="mb-3">
         <label class="form-label">
-            cantidad 1
+            Estado final del equipo
         </label>
-        <input type="number" class="form-control">
-    </div>
 
-    <div class="mb-3">
-        <label class="form-label">
-            Descripción 1
-        </label>
-        <textarea class="form-control"></textarea>
-    </div>
+        <select
+            name="resultado.estado"
+            class="form-control"
+        >
+            <option value="">
+                -- Seleccione --
+            </option>
 
+            <option value="funcional">
+                Funciona correctamente
+            </option>
 
-    <div class="mb-3">
-        <label class="form-label">
-            cantidad 2
-        </label>
-        <input type="number" class="form-control">
-    </div>
+            <option value="parcial">
+                Funciona parcialmente
+            </option>
 
-    <div class="mb-3">
-        <label class="form-label">
-            Descripción 2
-        </label>
-        <textarea class="form-control"></textarea>
-    </div>
-
-    <div class="mb-3">
-        <label class="form-label">
-            cantidad 3
-        </label>
-        <input type="number" class="form-control">
-    </div>
-
-    <div class="mb-3">
-        <label class="form-label">
-            Descripción 3
-        </label>
-        <textarea class="form-control"></textarea>
-    </div>
-
-
-    <div class="mb-3">
-        <label class="form-label">
-            cantidad 4
-        </label>
-        <input type="number" class="form-control">
-    </div>
-
-    <div class="mb-3">
-        <label class="form-label">
-            Descripción 4
-        </label>
-        <textarea class="form-control"></textarea>
-    </div>
-
-
-    <div class="mb-3">
-        <label class="form-label">
-            cantidad 5
-        </label>
-        <input type="number" class="form-control">
-    </div>
-
-    <div class="mb-3">
-        <label class="form-label">
-            Descripción 5
-        </label>
-        <textarea class="form-control"></textarea>
-    </div>
-
-    <div class="mb-3">
-        <label class="form-label">
-            Estado final del equipo:
-        </label>
-        <select name="estado" class="form-control">
-            <option value="">-- Seleccione --</option>
-            <option value="funciona_totalmente">Equipo funciona correctamente</option>
-            <option value="funciona_parcialmente">Equipo funciona parcialmente</option>
-            <option value="Fuera_de_servicio">Equipo fuera de servicio</option>
-            <option value="fuera_de_rango">Equipo fuera de rango</option>
-            <option value="faltan_accesorios">Equipo con falta de accesorios</option>
-            <option value="espera">Equipo en espera de respuesto</option>
-            <option value="no_encontrado">Equipo no encontrado</option>
+            <option value="fuera_servicio">
+                Fuera de servicio
+            </option>
         </select>
     </div>
 
+    <!-- ========================= -->
+    <!-- TECNICO -->
+    <!-- ========================= -->
+
     <div class="mb-3">
         <label class="form-label">
-            Entregado / Realizado por:
+            Técnico responsable
         </label>
-        <select class="form-control">
+
+        <select
+            name="tecnico.nombre"
+            class="form-control"
+        >
             <option value="">-- Seleccione --</option>
-            <option value="jose">José Francisco Ojeda</option>
-            <option value="luis">Luis Sergio Silva Sánchez</option>
-            <option value="daniel">Daniel Guerrero</option>
-            <option value="juan">Juan Camilo Beltrán</option>
-            <option value="carlos">Carlos Alberto Romero Lozano</option>
+            <option value="Jose">Jose Francisco Ojeda</option>
+            <option value="Luis">Luis Sergio Silva Sánchez</option>
+            <option value="Daniel">Daniel Guerrero</option>
+            <option value="Juan">Juan Camilo Beltrán</option>
+            <option value="Carlos">Carlos Alberto Romero Lozano</option>
         </select>
     </div>
 
-    <div class="mt-4">        
-        <button class="btn btn-primary" id="guardarInforme" type="button">
+    <!-- ========================= -->
+    <!-- BOTON -->
+    <!-- ========================= -->
+
+    <div class="mt-4">
+        <button
+            class="btn btn-primary" id="guardarInforme" type="button">
             Guardar informe
         </button>
     </div>

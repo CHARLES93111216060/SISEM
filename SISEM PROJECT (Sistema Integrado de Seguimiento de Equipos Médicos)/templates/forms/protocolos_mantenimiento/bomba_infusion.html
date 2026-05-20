@@ -1,163 +1,265 @@
-<form method="post">
+<div class="card mt-4 shadow-sm">
+    <div class="card-body">
+        <h2 class="mb-4">
+            Protocolo - Bomba de infusión
+        </h2>
 
-    <h2>Bomba de infusión</h2>
+        <!-- ====================================== -->
+        <!-- INSPECCION VISUAL -->
+        <!-- ====================================== -->
 
-    <div class="mb-3">
-        <label class="form-label">
-            Verficación de pantalla y botones de selección:
-        </label>
-        <select name="verificacion" class="form-control" required>
-            <option value="">-- Seleccione --</option>
-            <option value="si">Cumple</option>
-            <option value="no">No cumple</option>
-            <option value="na">No aplica</option>
-            <option value="nr">No registra</option>
-        </select>
+        <h4 class="mb-3">
+            Inspección visual y funcional
+        </h4>
+
+        <!-- Pantalla -->
+
+        <div class="mb-3">
+            <label class="form-label">
+                Verificación de pantalla y botones
+            </label>
+
+            <select name="protocolo_infusion.pantalla_botones" class="form-control" required>
+                <option value="">-- Seleccione --</option>
+                <option value="Cumple">Cumple</option>
+                <option value="No cumple">No cumple</option>
+                <option value="No aplica">No aplica</option>
+                <option value="No registra">No registra</option>
+            </select>
+        </div>
+
+        <!-- Sensor -->
+
+        <div class="mb-3">
+            <label class="form-label">
+                Verificación del sensor de gotas
+            </label>
+
+            <select
+                name="protocolo_infusion.sensor_gotas"
+                class="form-control"
+                required
+            >
+                <option value="">-- Seleccione --</option>
+                <option value="Cumple">Cumple</option>
+                <option value="No cumple">No cumple</option>
+                <option value="No aplica">No aplica</option>
+                <option value="No registra">No registra</option>
+            </select>
+        </div>
+
+        <!-- Cable -->
+
+        <div class="mb-3">
+            <label class="form-label">
+                Verificación del cable de poder
+            </label>
+
+            <select
+                name="protocolo_infusion.cable_poder"
+                class="form-control"
+                required
+            >
+                <option value="">-- Seleccione --</option>
+                <option value="Cumple">Cumple</option>
+                <option value="No cumple">No cumple</option>
+                <option value="No aplica">No aplica</option>
+                <option value="No registra">No registra</option>
+            </select>
+        </div>
+
+        <!-- Puerta -->
+
+        <div class="mb-3">
+            <label class="form-label">
+                Verificación de puerta
+            </label>
+
+            <select
+                name="protocolo_infusion.puerta"
+                class="form-control"
+                required
+            >
+                <option value="">-- Seleccione --</option>
+                <option value="Cumple">Cumple</option>
+                <option value="No cumple">No cumple</option>
+                <option value="No aplica">No aplica</option>
+                <option value="No registra">No registra</option>
+            </select>
+        </div>
+
+        <!-- ====================================== -->
+        <!-- VARIABLES -->
+        <!-- ====================================== -->
+
+        <h4 class="mt-4">
+            Variables de medición
+        </h4>
+
+        <div class="alert alert-secondary">
+
+            <ul class="mb-0">
+                <li>Verificación del flujo (ml/h)</li>
+                <li>Tiempo programado: 20 min</li>
+                <li>Volumen programado: 20 ml</li>
+                <li>Tolerancia: ±5%</li>
+            </ul>
+
+        </div>
+
+        <!-- Volumen -->
+
+        <div class="mb-3">
+            <label class="form-label">
+                Volumen medio medido (ml)
+            </label>
+            <input type="number" step="0.01" class="form-control" name="protocolo_infusion.volumen_medio" required >
+        </div>
+
+        <!-- Tiempo -->
+
+        <div class="mb-3">
+            <label class="form-label">
+                Tiempo medio medido (min)
+            </label>
+
+            <input
+                type="number"
+                step="0.01"
+                class="form-control"
+                name="protocolo_infusion.tiempo_medio"
+                required
+            >
+        </div>
+
+        <!-- ====================================== -->
+        <!-- ALARMAS -->
+        <!-- ====================================== -->
+
+        <h4 class="mt-4">
+            Verificación de alarmas
+        </h4>
+
+        <!-- Oclusion -->
+
+        <div class="mb-3">
+            <label class="form-label">
+                Alarma de oclusión
+            </label>
+
+            <select
+                name="protocolo_infusion.alarma_oclusion"
+                class="form-control"
+                required
+            >
+                <option value="">-- Seleccione --</option>
+                <option value="Cumple">Cumple</option>
+                <option value="No cumple">No cumple</option>
+                <option value="No aplica">No aplica</option>
+                <option value="No registra">No registra</option>
+            </select>
+        </div>
+
+        <!-- Aire -->
+
+        <div class="mb-3">
+            <label class="form-label">
+                Alarma de aire en línea
+            </label>
+
+            <select
+                name="protocolo_infusion.alarma_aire"
+                class="form-control"
+                required
+            >
+                <option value="">-- Seleccione --</option>
+                <option value="Cumple">Cumple</option>
+                <option value="No cumple">No cumple</option>
+                <option value="No aplica">No aplica</option>
+                <option value="No registra">No registra</option>
+            </select>
+        </div>
+
+        <!-- Frasco -->
+
+        <div class="mb-3">
+            <label class="form-label">
+                Alarma de frasco vacío
+            </label>
+
+            <select
+                name="protocolo_infusion.alarma_frasco_vacio"
+                class="form-control"
+                required
+            >
+                <option value="">-- Seleccione --</option>
+                <option value="Cumple">Cumple</option>
+                <option value="No cumple">No cumple</option>
+                <option value="No aplica">No aplica</option>
+                <option value="No registra">No registra</option>
+            </select>
+        </div>
+
+        <!-- Flujo -->
+
+        <div class="mb-3">
+            <label class="form-label">
+                Alarma de flujo libre
+            </label>
+
+            <select
+                name="protocolo_infusion.alarma_flujo_libre"
+                class="form-control"
+                required
+            >
+                <option value="">-- Seleccione --</option>
+                <option value="Cumple">Cumple</option>
+                <option value="No cumple">No cumple</option>
+                <option value="No aplica">No aplica</option>
+                <option value="No registra">No registra</option>
+            </select>
+        </div>
+
+        <!-- Puerta -->
+
+        <div class="mb-3">
+            <label class="form-label">
+                Alarma de puerta abierta
+            </label>
+
+            <select
+                name="protocolo_infusion.alarma_puerta"
+                class="form-control"
+                required
+            >
+                <option value="">-- Seleccione --</option>
+                <option value="Cumple">Cumple</option>
+                <option value="No cumple">No cumple</option>
+                <option value="No aplica">No aplica</option>
+                <option value="No registra">No registra</option>
+            </select>
+        </div>
+
+        <!-- Fin infusion -->
+
+        <div class="mb-3">
+            <label class="form-label">
+                Prealarma y fin de infusión
+            </label>
+
+            <select
+                name="protocolo_infusion.fin_infusion"
+                class="form-control"
+                required
+            >
+                <option value="">-- Seleccione --</option>
+                <option value="Cumple">Cumple</option>
+                <option value="No cumple">No cumple</option>
+                <option value="No aplica">No aplica</option>
+                <option value="No registra">No registra</option>
+            </select>
+        </div>
+
     </div>
 
-    <div class="mb-3">
-        <label class="form-label">
-            Verificación del sensor de gotas
-        </label>
-        <select name="verificacion" class="form-control" required>
-            <option value="">-- Seleccione --</option>
-            <option value="si">Cumple</option>
-            <option value="no">No cumple</option>
-            <option value="na">No aplica</option>
-            <option value="nr">No registra</option>
-        </select>
-    </div>
-
-    <div class="mb-3">
-        <label class="form-label">
-            Verificación del cable de poder
-        </label>
-        <select name="verificacion" class="form-control" required>
-            <option value="">-- Seleccione --</option>
-            <option value="si">Cumple</option>
-            <option value="no">No cumple</option>
-            <option value="na">No aplica</option>
-            <option value="nr">No registra</option>
-        </select>
-    </div>
-
-    <div class="mb-3">
-        <label class="form-label">
-            Verificación de la puerta
-        </label>
-        <select name="verificacion" class="form-control" required>
-            <option value="">-- Seleccione --</option>
-            <option value="si">Cumple</option>
-            <option value="no">No cumple</option>
-            <option value="na">No aplica</option>
-            <option value="nr">No registra</option>
-        </select>
-    </div>
-
-    <div class="mb-2">
-        <h2>Varibles a medir</h2>
-        <ul>
-            <li>Verificación del flujo (ml/h)</li>
-            <li>Tiempo (min)</li>
-            <li>Volumen (ml) (+/- 5%)</li>
-            <li>Volumne programado: 20ml</li>
-        </ul>
-    </div>
-
-    <div class="mb-3">
-        <label class="form-label">
-            Volumen medio
-        </label>
-        <input type="text" class="form-control" name="volumen_medio" required>
-    </div>
-
-    <h3>Tiempo programado: 20 minutos.</h3>
-
-    <div class="mb-3">
-        <label class="form-label">
-            Tiempo medio
-        </label>
-        <input type="text" class="form-control" name="tiempo_medio" required>
-    </div>
-
-    <div class="mb-3">
-        <label class="form-label">
-            Alarma de oclusión
-        </label>
-        <select name="verificacion" class="form-control" required>
-            <option value="">-- Seleccione --</option>
-            <option value="si">Cumple</option>
-            <option value="no">No cumple</option>
-            <option value="na">No aplica</option>
-            <option value="nr">No registra</option>
-        </select>
-    </div>
-
-    <div class="mb-3">
-        <label class="form-label">
-            Alarma de aire en linea
-        </label>
-        <select name="verificacion" class="form-control" required>
-            <option value="">-- Seleccione --</option>
-            <option value="si">Cumple</option>
-            <option value="no">No cumple</option>
-            <option value="na">No aplica</option>
-            <option value="nr">No registra</option>
-        </select>
-    </div>
-
-    <div class="mb-3">
-        <label class="form-label">
-            Alarma de frasco vacio
-        </label>
-        <select name="verificacion" class="form-control" required>
-            <option value="">-- Seleccione --</option>
-            <option value="si">Cumple</option>
-            <option value="no">No cumple</option>
-            <option value="na">No aplica</option>
-            <option value="nr">No registra</option>
-        </select>
-    </div>
-
-    <div class="mb-3">
-        <label class="form-label">
-            Alarma de flujo libre
-        </label>
-        <select name="verificacion" class="form-control" required>
-            <option value="">-- Seleccione --</option>
-            <option value="si">Cumple</option>
-            <option value="no">No cumple</option>
-            <option value="na">No aplica</option>
-            <option value="nr">No registra</option>
-        </select>
-    </div>
-
-    <div class="mb-3">
-        <label class="form-label">
-            Alarma de puerta abierta
-        </label>
-        <select name="verificacion" class="form-control" required>
-            <option value="">-- Seleccione --</option>
-            <option value="si">Cumple</option>
-            <option value="no">No cumple</option>
-            <option value="na">No aplica</option>
-            <option value="nr">No registra</option>
-        </select>
-    </div>
-
-    <div class="mb-3">
-        <label class="form-label">
-            Pre-alarma de infusión y alarma de fin de infusión
-        </label>
-        <select name="verificacion" class="form-control" required>
-            <option value="">-- Seleccione --</option>
-            <option value="si">Cumple</option>
-            <option value="no">No cumple</option>
-            <option value="na">No aplica</option>
-            <option value="nr">No registra</option>
-        </select>
-    </div>
-
-
-
-</form>
+</div>
