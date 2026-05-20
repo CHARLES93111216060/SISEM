@@ -1,0 +1,136 @@
+*{
+    margin:0;
+    padding:0;
+    box-sizing:border-box;
+}
+
+body{
+    font-family: Arial, Helvetica, sans-serif;
+    height:100vh;
+    overflow:hidden;
+}
+
+.titulo {
+    text-align: center;
+    color: red;
+    padding: auto;
+    font-family: 'Lucida Sans', 'Lucida Sans Regular', 'Lucida Grande', 'Lucida Sans Unicode', 'Geneva', Verdana, sans-serif;
+}
+
+.container {
+    display: flex;
+    justify-content: center;
+    align-items: center;
+    height: 100vh;
+}
+
+.derecha {
+    background-color: #daeef8;
+    padding: 50px;
+    border-radius: 10px;
+    box-shadow: 0 0 10px rgba(0, 0, 0, 0.1);
+    width: 60%;
+    height: 100%;
+    background-image: url('../images/logo_biomega.png');
+    background-size: auto;
+    background-position: auto;
+
+}
+
+.derecha h1 {
+    font-size: 48px;
+    color: #3C3C3C;
+    margin-bottom: 20px;
+}
+
+.derecha p {
+    font-size: 24px;
+    color: #3C3C3C;
+}
+
+.izquierda {
+    width:40%;
+    height: 100%;
+    display:flex;
+    justify-content:center;
+    align-items:center;
+    background:#f4f6f9;
+}
+
+.formulario {
+    width:400px;
+    background:azure;
+    padding:50px;
+    border-radius:15px;
+    box-shadow: 0 10px 30px rgba(0,0,0,0.15);
+}
+
+.formulario h2 {
+    text-align: center;
+    margin-bottom: 30px;
+    color: #3C3C3C;
+}
+
+form {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    width: 100%;
+    font-family: 'Lucida Sans', 'Lucida Sans Regular', 'Lucida Grande', 'Lucida Sans Unicode', 'Geneva', Verdana, sans-serif;
+}
+
+form input {
+    width: 100%;
+    padding: 15px;
+    margin: 10px 0;
+    border: 1px solid #ccc;
+    border-radius: 10px;
+    font-size: 16px;
+    background: #f1f1f1;
+    transition: all 0.3s ease;
+}
+
+form input:focus {
+    border-color: #2459dd;
+    background: #c7cacd;
+    outline: none;
+    box-shadow:  0 0 8px rgba(0,119,255,0.3);
+}
+
+form button {
+    width: 100%;
+    padding: 15px;
+    margin-top: 20px;
+    border: none;
+    border-radius: 10px;
+    background-color: #2487a4;
+    color: white;
+    font-size: 16px;
+    cursor: pointer;
+    transition: background-color 0.3s ease;
+}
+
+form button:hover {
+    background-color: #1b5f73;
+    transform:translateY(-3px);
+}
+
+.error {
+    background-color: #f8d7da;
+    color: #c70000;
+    padding: 10px;
+    border-radius: 5px;
+    margin-bottom: 20px;
+    width: 100%;
+    text-align: center;
+}
+
+footer {
+    text-align: center;
+    padding: 20px;
+    background-color: #f4f6f9;
+    color: #555;
+    position: absolute;
+    bottom: 0;
+    width: 100%;
+}

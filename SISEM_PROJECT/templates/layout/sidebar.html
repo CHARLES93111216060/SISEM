@@ -1,0 +1,150 @@
+<aside class="sidebar">
+
+    
+    <div class="menu">
+        <img src="{{ url_for('static', filename='images/logo_biomega.png') }}" alt="Logo SISEM" class="logo-sidebar">
+        <h1>SISEM</h1>
+    </div>
+    <div class="logo">
+        <button class="menu-btn">
+            <img src="{{url_for('static', filename='images/menu.svg')}}" alt="menu" class="menu-icon">
+        </button>
+    </div>
+    <nav>
+        <ul>
+            <li>
+                <a href="/dashboard">
+                    <img src="{{ url_for('static', filename='images/home.svg') }}" alt="Home" class="Home">
+                    Home
+                </a>
+            </li>
+        </ul>
+        <ul>
+            <li class="dropdown">
+                <a href="#">
+                    <img src="{{ url_for('static', filename='images/tools.svg') }}" alt="Mantenimiento" class="maintenance">
+                    Mantenimiento
+                </a>
+                <ul class="dropdown-content">
+                    <li>
+                        <a href="/mantenimiento/planificado">
+                            Cronograma de mantenimiento
+                        </a>
+                    </li>
+                    <li>
+                        <a href="/mantenimiento/solicitudes">
+                            Solicitudes de mantenimiento
+                        </a>
+                    </li>
+                    <li>
+                        <a href="/mantenimiento/reportes">
+                            Generar reporte de mantenimiento
+                        </a>
+                    </li>
+                    <li>
+                        <a href="/mantenimiento/historial">
+                            Historial de mantenimiento
+                        </a>
+                    </li>
+                </ul>
+            </li>
+
+            <li>
+                <a href="/clientes">
+                    <img src="{{ url_for('static', filename='images/customer.svg')}}" alt="customer" class="customer">
+                    Clientes
+                </a>
+            </li>
+
+            <li class="dropdown">
+                <a href="/usuarios">
+                    <img src="{{url_for('static', filename='images/remisiones.svg')}}" alt="Remisiones" class="remisiones">
+                    Comercial
+                </a>
+                <ul class="dropdown-content">
+                    <li>
+                        <a href="/comercial/clientes">
+                            Facturación
+                        </a>
+                    </li>
+                    <li>
+                        <a href="/comercial/ordenes">
+                            Órdenes de compra
+                        </a>
+                    </li>
+                    <li>
+                        <a href="/comercial/inventario">
+                            Inventario
+                        </a>
+                    </li>
+                </ul>
+            </li>
+
+            <li class="dropdown">
+                <a href="/configuracion">
+                    <img src="{{url_for('static', filename='images/worker.svg')}}" alt="worker" class="worker">
+                    Telento humano
+                </a>
+                <ul class="dropdown-content">
+                    <li>
+                        <a href="/talento_humano/empleados">
+                            Empleados
+                        </a>
+                    </li>
+                    <li>
+                        <a href="/talento_humano/roles">
+                            Roles y permisos
+                        </a>
+                    </li>
+                    <li>
+                        <a href="/talento_humano/asistencia">
+                            Cuentas de cobro
+                        </a>
+                    </li>
+                    <li>
+                        <a href="/talento_humano/nomina">
+                            Nómina
+                        </a>
+                    </li>
+                    <li>
+                        <a href="/talento_humano/reportes">
+                            Modificar lista de empleados
+                        </a>
+                    </li>
+                </ul>
+            </li>
+
+            <li class="dropdown">
+                <a href="/laboratorio">
+                    <img src="{{url_for('static', filename='images/laboratorio.svg')}}" alt="Laboratorio" class="laboratorio">
+                    Laboratorio
+                </a>
+                <ul class="dropdown-content">
+                    <li>
+                        <a href="/laboratorio/cronograma de metrologia">
+                            Cronograma de metrología
+                        </a>
+                    </li>
+                    <li>
+                        <a href="/laboratorio/reportes_metrologia">
+                            Generar reportes de metrología
+                        </a>
+                    </li>
+                    <li>
+                        <a href="/laboratorio/hojas_de_vida">
+                            Consulta de hojas de vida
+                        </a>
+                    </li>
+                </ul>
+            </li>
+        </ul>
+
+    </nav>
+    <div class="wsp-box">
+        <a href="https://wa.me/573007619113?text=Hola, quiero más información sobre SISEM" target="_blank" class="wsp">
+            <img class="wsp-icon" src="{{ url_for('static', filename='images/wsp.svg') }}" alt="WhatsApp">
+            Contáctanos
+        </a>
+    </div>
+    
+</aside>

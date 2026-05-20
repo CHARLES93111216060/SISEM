@@ -1,0 +1,31 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>
+        SISEM
+    </title>
+    <link rel="stylesheet" href="{{ url_for('static', filename='css/style.css')}}">
+    <link rel="icon" href="{{ url_for('static', filename='images/logo_biomega.ico') }}" type="image/x-icon">
+</head>
+<body>
+    <div class="dashboard-container">
+        <!-- sidebar -->
+        {% include 'layout/sidebar.html' %}
+        
+        <div class="main-content">
+            <!-- header -->
+            {% include 'layout/header.html' %}  
+
+            <!-- body -->
+            <main class="content">
+                {% block content %}
+                {% endblock %}
+            </main>
+
+            <!-- footer -->
+            {% include 'layout/footer.html' %}
+        </div>
+    </div>
+</body>
