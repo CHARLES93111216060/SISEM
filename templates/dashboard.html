@@ -5,22 +5,34 @@
 {% endblock %}
 
 {% block content %}
+<div class="dashboard-shell">
+    <section class="page-hero">
+        <div>
+            <span class="eyebrow">Panel principal</span>
+            <h2>Bienvenido a SISEM</h2>
+            <p>Monitorea equipos, alertas y mantenimientos desde un tablero unificado y profesional.</p>
+        </div>
+        <div class="hero-actions">
+            <a class="btn btn-primary" href="/mantenimiento/reportes">Crear reporte</a>
+            <a class="btn btn-secondary" href="/clientes">Ver clientes</a>
+        </div>
+    </section>
 
-<div class = "dashboard-cards">
-    <div class = "card">
-        <h3>Equipos en Monitoreo</h3>
-        <p>12</p>
-    </div>
-    
-    <div class = "card">
-        <h3>Alertas Activas</h3>
-        <p>3</p>
-    </div>
-    
-    <div class = "card">
-        <h3>Mantenimiento Programado</h3>
-        <p>5</p>
+    <div class="dashboard-cards">
+        <div class="card">
+            <h3>Equipos en Monitoreo</h3>
+            <p>12</p>
+        </div>
+
+        <div class="card">
+            <h3>Alertas Activas</h3>
+            <p>3</p>
+        </div>
+
+        <div class="card">
+            <h3>Mantenimiento Programado</h3>
+            <p>5</p>
+        </div>
     </div>
 </div>
-
 {% endblock %}

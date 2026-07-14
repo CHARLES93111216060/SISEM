@@ -19,7 +19,7 @@ function selector(selectorElement, containerElement){
     try {
         const response = await fetch(`/load_form/${valor}`);
         if(!response.ok){
-            throw new error(`HTTP error: ${response.status}`);
+            throw new Error(`HTTP error: ${response.status}`);
         }
         const html = await response.text();
         containerElement.innerHTML = html;
@@ -30,7 +30,7 @@ function selector(selectorElement, containerElement){
     }
     
     catch (error) {
-        console.error('Error al cargar el formulario:', error);
+        // console.error('Error al cargar el formulario:', error);
         containerElement.innerHTML = '<p>Error al cargar el formulario. Por favor, inténtalo de nuevo.</p>';
     }
     });
@@ -54,7 +54,8 @@ selector(seleccion, container);
 function guardarProtocoloMantenimiento(){
     const boton = document.getElementById('guardarInforme');
     if(!boton){
-        console.warn('Guardar informe button not found');
+        // console.warn('Guardar informe button not found');
+        alert('Error: Botón de guardar informe no encontrado');
         return;
     }
 
@@ -63,7 +64,7 @@ function guardarProtocoloMantenimiento(){
         const formulario = document.getElementById('protocoloForm');
         
         if(!formulario){
-            console.error('Protocol form not found');
+            // console.error('Protocol form not found');
             alert('Error: Formulario no encontrado');
             return;
         }
@@ -89,7 +90,7 @@ function guardarProtocoloMantenimiento(){
                 },
                 body:JSON.stringify(datos)
             });
-            console.log(datos)
+            // console.log(datos)
             
             if(!response.ok){
                 throw new Error(`HTTP error! status: ${response.status}`);
@@ -97,8 +98,15 @@ function guardarProtocoloMantenimiento(){
             
             const resultado = await response.json();
             alert(resultado.mensaje || 'Informe guardado correctamente');
+            // Si el servidor devuelve el id, iniciar la descarga automática
+            if(resultado.id){
+                alert(`Informe guardado con ID: ${resultado.id}. Iniciando descarga, por favor espera...`);
+                const downloadUrl = `/mantenimiento/reportes/${resultado.id}/descargar`;
+                // abrir en la misma ventana para que el navegador gestione la descarga
+                window.location = downloadUrl;
+            }
         }catch(error){
-            console.error('Error al guardar:', error);
+            // console.error('Error al guardar:', error);
             alert('Error al guardar el informe. Revisa la consola.');
         }
     };

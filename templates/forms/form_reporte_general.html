@@ -15,9 +15,9 @@
         </label>
         <select name="cliente" class="form-control">
             <option value="">-- Seleccione --</option>
-            <option value="sep">Clínica SEP</option>
-            <option value="san_jose">Hospital San José Infantil</option>
-            <option value="multilink">Multilink Ingenieria S.A.S.</option>
+            {% for cliente in clientes %}
+                <option value="{{ cliente[0] }}">{{ cliente[1] }}</option>
+            {% endfor %}
         </select>
     </div>
 
@@ -48,7 +48,12 @@
         <label class="form-label">
             Marca:
         </label>
-        <input type="text" class="form-control">
+        <select name="marca" class="form-control">
+            <option value="">-- Seleccione --</option>
+            {% for marca in brand %}
+                <option value="{{ marca[0] }}">{{ marca[1] }}</option>
+            {% endfor %}
+        </select>
     </div> 
 
     <div class="mb-3">
@@ -78,15 +83,9 @@
         </label>
         <select name="servicio" class="form-control">
             <option value="">-- Seleccione --</option>
-            <option value="preventivo">Mantenimiento Preventivo</option>
-            <option value="correctivo">Mantenimiento Correctivo</option>
-            <option value="accesorios">Cambio de accesorios</option>
-            <option value="respuestos">Cambio de repuestos</option>
-            <option value="baja">Dado de baja</option>
-            <option value="parámetros">Equipo fuera de parámetros</option>
-            <option value="diagnostico">Diagnóstico</option>
-            <option value="soporte">Soporte técnico</option>
-            <option value="capacitacion">Capacitación</option>
+            {% for servicio in servicios %}
+                <option value="{{ servicio[0] }}">{{ servicio[1] }}</option>
+            {% endfor %}
         </select>
     </div>
 
@@ -203,18 +202,16 @@
             <option value="no_encontrado">Equipo no encontrado</option>
         </select>
     </div>
-
+<!-- ----------------------------------------------------------------------------------- -->
     <div class="mb-3">
         <label class="form-label">
             Entregado / Realizado por:
         </label>
         <select class="form-control">
             <option value="">-- Seleccione --</option>
-            <option value="jose">José Francisco Ojeda</option>
-            <option value="luis">Luis Sergio Silva Sánchez</option>
-            <option value="daniel">Daniel Guerrero</option>
-            <option value="juan">Juan Camilo Beltrán</option>
-            <option value="carlos">Carlos Alberto Romero Lozano</option>
+            {% for tecnico in tecnicos %}
+                <option value="{{ tecnico[0] }}">{{ tecnico[1] }}</option>
+            {% endfor %}
         </select>
     </div>
 

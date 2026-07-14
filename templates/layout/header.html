@@ -1,14 +1,20 @@
 {% block content %}
 <header class="header">
     <div class="header-left">
-        <h2>SISEM</h2>
+        <div class="header-title-group">
+            <div class="header-icon">📊</div>
+            <div>
+                <h2>Panel SISEM</h2>
+                <p>Gestión integral y seguimiento operativo</p>
+            </div>
+        </div>
     </div>
     <div class="header-right">
-        <span>Welcome again, {{ session['username'] }}</span>
-        <button class="log-out">
-            <a href="/logout">Cerrar sesión</a>
-        </button>
-
+        <div class="user-pill">
+            <span class="user-label">Bienvenido</span>
+            <strong>{{ session['username'] }}</strong>
+        </div>
+        <a href="/logout" class="log-out">Cerrar sesión</a>
     </div>
 </header>
 {% endblock %}

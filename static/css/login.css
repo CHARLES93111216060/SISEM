@@ -8,6 +8,7 @@ body{
     font-family: Arial, Helvetica, sans-serif;
     height:100vh;
     overflow:hidden;
+    background:linear-gradient(135deg, #f4f8fc 0%, #eaf4ff 100%);
 }
 
 .titulo {
@@ -25,16 +26,17 @@ body{
 }
 
 .derecha {
-    background-color: #daeef8;
+    background:linear-gradient(135deg, #dceefe 0%, #b9dffb 100%);
     padding: 50px;
-    border-radius: 10px;
-    box-shadow: 0 0 10px rgba(0, 0, 0, 0.1);
-    width: 60%;
+    border-radius: 0 24px 24px 0;
+    box-shadow: 0 20px 40px rgba(35, 64, 112, 0.14);
+    width: 50%;
     height: 100%;
     background-image: url('../images/logo_biomega.png');
     background-size: auto;
-    background-position: auto;
-
+    background-position: center;
+    background-repeat: no-repeat;
+    opacity: 0.95;
 }
 
 .derecha h1 {
@@ -49,7 +51,7 @@ body{
 }
 
 .izquierda {
-    width:40%;
+    width:50%;
     height: 100%;
     display:flex;
     justify-content:center;
@@ -58,11 +60,12 @@ body{
 }
 
 .formulario {
-    width:400px;
-    background:azure;
+    width:420px;
+    background:#ffffff;
     padding:50px;
-    border-radius:15px;
-    box-shadow: 0 10px 30px rgba(0,0,0,0.15);
+    border-radius:22px;
+    box-shadow: 0 18px 40px rgba(31, 42, 55, 0.14);
+    border:1px solid #e3ecf7;
 }
 
 .formulario h2 {
@@ -102,17 +105,18 @@ form button {
     padding: 15px;
     margin-top: 20px;
     border: none;
-    border-radius: 10px;
-    background-color: #2487a4;
+    border-radius: 12px;
+    background:linear-gradient(90deg, #2563eb 0%, #1d4ed8 100%);
     color: white;
     font-size: 16px;
     cursor: pointer;
-    transition: background-color 0.3s ease;
+    transition: transform 0.2s ease, box-shadow 0.2s ease;
+    box-shadow: 0 10px 20px rgba(37, 99, 235, 0.2);
 }
 
 form button:hover {
-    background-color: #1b5f73;
     transform:translateY(-3px);
+    box-shadow: 0 14px 24px rgba(37, 99, 235, 0.24);
 }
 
 .error {

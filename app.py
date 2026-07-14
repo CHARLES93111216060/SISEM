@@ -1,11 +1,12 @@
 from functools import wraps
-from flask import Flask, render_template, request, session, redirect, url_for, jsonify
+from flask import Flask, render_template, request, session, redirect, url_for, jsonify, send_file, after_this_request
 from datetime import timedelta as tdelta
 import json
 import os
 from datetime import datetime
 import logging
 from dotenv import load_dotenv
+from database.db import personal, marcas, servicios, clientes, tipo_equipos, subir_reporte
 
 sisem = Flask(__name__)
 
@@ -16,7 +17,6 @@ sisem.secret_key = os.getenv('SECRET_KEY')
 
 # AUTHENTICATION: TODO - Implement database authentication
 user = os.getenv('DEFAULT_USER')
-print(user)
 pws = os.getenv('DEFAULT_PASSWORD')
 
 logging.basicConfig(level=logging.INFO)
@@ -72,7 +72,7 @@ def login_post():
 # Acceso a base de datos de clientes
 @sisem.route('/clientes')
 @login_required
-def clientes():
+def ver_clientes():
     return render_template('clientes.html')
 
 
@@ -80,7 +80,9 @@ def clientes():
 @sisem.route('/mantenimiento/reportes')
 @login_required
 def mantenimiento_correctivo():
-    return render_template('/forms/forms_mantenimiento.html')
+    tecnicos = personal()
+    brand = marcas()
+    return render_template('forms/forms_mantenimiento.html', tecnicos=tecnicos, brand=brand)
 
 
 # Ajax para el forms
@@ -88,32 +90,38 @@ def mantenimiento_correctivo():
 @login_required
 def load_form(form_type):
 
+    tecnicos_data = personal() or []
+    brand_data = marcas() or []
+    tipo_equipos_data = tipo_equipos() or []
+    servicios_data = servicios() or []
+    clientes_data = clientes() or []
+
     forms = {
         'reporte_general': 'forms/form_reporte_general.html',
         'Protocolo_de_mantenimiento': 'forms/form_protocolo_mantenimiento.html',
         'consulta_reporte': 'forms/form_consulta.html',
-        'bascula': 'forms/protocolos_mantenimiento/bascula.html',
-        'Bomba_de_infusión': 'forms/protocolos_mantenimiento/bomba_infusion.html',
-        'Cama_hospitalaria': 'forms/protocolos_mantenimiento/cama_hospitalaria.html',
-        'Concentrador_de_O2': 'forms/protocolos_mantenimiento/concentrador_O2.html',
-        'Desfibrilador': 'forms/protocolos_mantenimiento/desfibrilador.html',
-        'Electrobisturí': 'forms/protocolos_mantenimiento/electrobisturi.html',
-        'Electrocardiógrafo': 'forms/protocolos_mantenimiento/electrocardiografo.html',
-        'Flujómetro': 'forms/protocolos_mantenimiento/flujometro.html',
-        'Incubadora': 'forms/protocolos_mantenimiento/incubadora.html',
-        'Máquina_de_anestésia': 'forms/protocolos_mantenimiento/maquina_anestesia.html',
-        'Monitor_de_signos_vitales': 'forms/protocolos_mantenimiento/monitor_signos_vitales.html',
-        'Neveras': 'forms/protocolos_mantenimiento/neveras.html',
-        'Oxímetro': 'forms/protocolos_mantenimiento/oximetro.html',
-        'Succionador': 'forms/protocolos_mantenimiento/succionador.html',
-        'Tensiómetro': 'forms/protocolos_mantenimiento/tensiometro.html',
-        'ventilador': 'forms/protocolos_mantenimiento/ventilador.html'
+        '1': 'forms/protocolos_mantenimiento/bascula.html',
+        '2': 'forms/protocolos_mantenimiento/bomba_infusion.html',
+        '3': 'forms/protocolos_mantenimiento/cama_hospitalaria.html',
+        '4': 'forms/protocolos_mantenimiento/concentrador_O2.html',
+        '5': 'forms/protocolos_mantenimiento/desfibrilador.html',
+        '6': 'forms/protocolos_mantenimiento/electrobisturi.html',
+        '7': 'forms/protocolos_mantenimiento/electrocardiografo.html',
+        '8': 'forms/protocolos_mantenimiento/flujometro.html',
+        '9': 'forms/protocolos_mantenimiento/incubadora.html',
+        '10': 'forms/protocolos_mantenimiento/maquina_anestesia.html',
+        '11': 'forms/protocolos_mantenimiento/monitor_signos_vitales.html',
+        '12': 'forms/protocolos_mantenimiento/neveras.html',
+        '13': 'forms/protocolos_mantenimiento/oximetro.html',
+        '14': 'forms/protocolos_mantenimiento/succionador.html',
+        '15': 'forms/protocolos_mantenimiento/tensiometro.html',
+        '16': 'forms/protocolos_mantenimiento/ventilador.html'
     }
 
     # ajax desde js
     template = forms.get(form_type)
     if template:
-        return render_template(template)
+        return render_template(template, tecnicos=tecnicos_data, brand=brand_data, servicios=servicios_data, clientes=clientes_data, tipo_equipos=tipo_equipos_data)
     else:
         return jsonify({"error": "Tipo de formulario no encontrado"}), 404
     
@@ -127,21 +135,52 @@ def guardar_informe():
         
         if not datos:
             return jsonify({"error": "No data provided"}), 400
+                
+        # Validar que existan las claves requeridas
+        claves_requeridas = ["tecnico.nombre", "cliente.nombre", "equipo.tipo", "general.fecha_mantenimiento"]
+        for clave in claves_requeridas:
+            if clave not in datos:
+                return jsonify({"error": f"Falta la clave requerida: {clave}"}), 400
         
-        os.makedirs('informes', exist_ok=True)
-        fecha = datetime.now().strftime("%Y%m%d_%H%M%S")
-        archivo = f'informes/informe_{fecha}.json'
+        tecnico = datos["tecnico.nombre"]
+        cliente = datos["cliente.nombre"]
+        equipo = datos["equipo.tipo"]
+        fecha = datos["general.fecha_mantenimiento"]
+        reporte = json.dumps(datos, ensure_ascii=False, indent=4)
 
-        with open(archivo, 'w', encoding='utf-8') as f:
-            json.dump(datos, f, ensure_ascii=False, indent=4)
-        
-        logger.info(f"Informe guardado: {archivo}")
-        return jsonify({"mensaje": "Informe guardado correctamente"}), 201
+        result = subir_reporte(tecnico, cliente, equipo, fecha, reporte)
+        if not result:
+            return jsonify({"error": "No se pudo guardar el informe"}), 500
+
+        return jsonify({"mensaje": "Informe guardado correctamente", "id": result}), 201
 
     except Exception as e:
         logger.error(f"Error guardando informe: {str(e)}")
-        return jsonify({"error": "Error al guardar el informe"}), 500
-    
+        print(f"Error guardando informe: {str(e)}")  # Debug
+        return jsonify({"error": f"Error al guardar el informe: {str(e)}"}), 500
+
+@sisem.route('/mantenimiento/reportes/<int:report_id>/descargar')
+@login_required
+def descargar_informe(report_id):
+    try:
+        # Import here to avoid potential circular imports at module load
+        from informes.informes import generar_reporte_pdf_concentrador
+        pdf_path = generar_reporte_pdf_concentrador(report_id)
+        if not pdf_path or not os.path.exists(pdf_path):
+            return jsonify({"error": "No se pudo generar el PDF"}), 500
+
+        @after_this_request
+        def _remove_file(response):
+            try:
+                os.remove(pdf_path)
+            except Exception:
+                pass
+            return response
+
+        return send_file(pdf_path, as_attachment=True, download_name=f"reporte_{report_id}.pdf", mimetype='application/pdf')
+    except Exception as e:
+        logger.error(f"Error generando/descargando PDF: {e}")
+        return jsonify({"error": f"Error generando/descargando PDF: {str(e)}"}), 500
 
 
 if __name__ == '__main__':

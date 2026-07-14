@@ -29,22 +29,9 @@
             class="form-control"
         >
             <option value="">--Seleccione--</option>
-            <option value="bascula">Báscula</option>
-            <option value="Bomba_de_infusión">Bomba de infusión</option>
-            <option value="Cama_hospitalaria">Cama hospitalaria</option>
-            <option value="Concentrador_de_O2">Concentrador de O2</option>
-            <option value="Desfibrilador">Desfibrilador</option>
-            <option value="Electrobisturí">Electrobisturí</option>
-            <option value="Electrocardiógrafo">Electrocardiógrafo</option>
-            <option value="Flujómetro">Flujómetro</option>
-            <option value="Incubadora">Incubadora</option>
-            <option value="Máquina_de_anestésia">Máquina de anestésia</option>
-            <option value="Monitor_de_signos_vitales">Monitor de signos vitales</option>
-            <option value="Neveras">Neveras</option>
-            <option value="Oxímetro">Oxímetro</option>
-            <option value="Succionador">Succionador</option>
-            <option value="Tensiómetro">Tensiómetro</option>
-            <option value="ventilador">Ventilador</option>
+            {% for tipo in tipo_equipos %}
+                <option value="{{ tipo[0] }}">{{ tipo[1] }}</option>
+            {% endfor %}
         </select>
     </div>
 
@@ -64,9 +51,9 @@
             class="form-control"
         >
             <option value="">-- Seleccione --</option>
-            <option value="Hospital San José infantil">Hospital San José infantil</option>
-            <option value="SEP">SEP</option>
-            <option value="Multilink">Multilink</option>
+            {% for cliente in clientes %}
+                <option value="{{ cliente[0] }}">{{ cliente[1] }}</option>
+            {% endfor %}
         </select>
     </div>
 
@@ -97,12 +84,12 @@
         <label class="form-label">
             Marca
         </label>
-
-        <input
-            type="text"
-            class="form-control"
-            name="equipo.marca"
-        >
+        <select name="equipo.marca" class="form-control">
+            <option value="">-- Seleccione --</option>
+            {% for marca in brand %}
+                <option value="{{ marca[0] }}">{{ marca[1] }}</option>
+            {% endfor %}
+        </select>
     </div>
 
     <div class="mb-3">
@@ -151,19 +138,11 @@
         <label class="form-label">
             Tipo de servicio
         </label>
-
-        <select
-            name="servicio.tipo"
-            class="form-control"
-        >
+        <select name="servicio.tipo" class="form-control"        >
             <option value="">-- Seleccione --</option>
-            <option value="preventivo">
-                Preventivo
-            </option>
-
-            <option value="correctivo">
-                Correctivo
-            </option>
+            {% for servicio in servicios %}
+                <option value="{{ servicio[0] }}">{{ servicio[1] }}</option>
+            {% endfor %}
         </select>
     </div>
 
@@ -286,16 +265,11 @@
             Técnico responsable
         </label>
 
-        <select
-            name="tecnico.nombre"
-            class="form-control"
-        >
+        <select name="tecnico.nombre" class="form-control">
             <option value="">-- Seleccione --</option>
-            <option value="Jose">Jose Francisco Ojeda</option>
-            <option value="Luis">Luis Sergio Silva Sánchez</option>
-            <option value="Daniel">Daniel Guerrero</option>
-            <option value="Juan">Juan Camilo Beltrán</option>
-            <option value="Carlos">Carlos Alberto Romero Lozano</option>
+            {% for tecnico in tecnicos %}
+            <option value="{{tecnico[0]}}">{{tecnico[1]}}</option>
+            {% endfor %}
         </select>
     </div>
 

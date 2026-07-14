@@ -28,4 +28,9 @@
             {% include 'layout/footer.html' %}
         </div>
     </div>
+    <script>
+        window.addEventListener('scroll', () => {
+            document.body.classList.toggle('scrolled', window.scrollY > 8);
+        });
+    </script>
 </body>
