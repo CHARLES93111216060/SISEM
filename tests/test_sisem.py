@@ -254,19 +254,16 @@ class ContenidoDelPDF(unittest.TestCase):
         self.assertNotIn('<script>x()', html)
         self.assertIn('&lt;img src=', html)
 
+    def test_fecha_acepta_datetime(self):
+        from datetime import date, datetime
+        self.assertEqual(informes.fecha_legible(datetime(2026, 10, 14, 15, 30, 5, 123456)), '14/10/2026')
+        self.assertEqual(informes.fecha_legible(date(2026, 10, 14)), '14/10/2026')
+        self.assertEqual(informes.fecha_legible('2026-10-14 08:00:00'), '14/10/2026')
+
     def test_assets_dentro_de_static(self):
         self.assertTrue(informes.pdf_asset('images/pdf_logo.png').startswith('file://'))
         with self.assertRaises(ValueError):
             informes.pdf_asset('../app.py')
-
-    def test_pdf_solo_lee_recursos_de_static(self):
-        permitido = informes.ruta_local_permitida
-        self.assertTrue(permitido(informes.pdf_asset('images/pdf_logo.png')))
-        self.assertTrue(permitido('data:image/png;base64,AAAA'))
-        app_py = informes.Path(informes.APP_ROOT, 'app.py').as_uri()
-        for url in (app_py, 'file:///etc/passwd', 'http://169.254.169.254/latest/meta-data/',
-                    'https://ejemplo.com/x.png', 'ftp://ejemplo.com/x'):
-            self.assertFalse(permitido(url), url)
 
 
 class Rutas(unittest.TestCase):

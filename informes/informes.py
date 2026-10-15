@@ -20,8 +20,6 @@ from datetime import datetime
 from functools import lru_cache
 from html.parser import HTMLParser
 from pathlib import Path
-from urllib.parse import urlsplit
-from urllib.request import url2pathname
 
 from flask import render_template
 
@@ -111,7 +109,9 @@ def _legible(valor):
 
 
 def _fecha(valor):
-    """'2026-10-14' -> '14/10/2026'. Si no se reconoce, se deja tal cual."""
+    """'2026-10-14' -> '14/10/2026'. Acepta date/datetime; si no se reconoce, se deja tal cual."""
+    if hasattr(valor, 'strftime'):          # date / datetime que entrega PostgreSQL
+        return valor.strftime('%d/%m/%Y')
     texto = _texto(valor).strip()
     for formato in ('%Y-%m-%d', '%Y-%m-%d %H:%M:%S'):
         try:
@@ -272,15 +272,18 @@ def _cargar_reporte(reporte_id):
     if not fila:
         raise ReporteNoEncontrado(f"No existe el reporte {reporte_id}")
     bruto = fila[5]
-    if isinstance(bruto, (bytes, bytearray)):
-        bruto = bruto.decode('utf-8')
-    if not bruto:
-        raise ReporteNoEncontrado(f"El reporte {reporte_id} no tiene datos")
-    try:
-        data = json.loads(bruto)
-    except (TypeError, ValueError) as error:
-        raise InformeInvalido(f"El reporte {reporte_id} tiene un JSON inválido") from error
-    if not isinstance(data, dict):
+    if isinstance(bruto, dict):                    # columna jsonb: el driver ya lo convierte
+        data = bruto
+    else:
+        if isinstance(bruto, (bytes, bytearray)):
+            bruto = bruto.decode('utf-8')
+        if not bruto:
+            raise ReporteNoEncontrado(f"El reporte {reporte_id} no tiene datos")
+        try:
+            data = json.loads(bruto)
+        except (TypeError, ValueError) as error:
+            raise InformeInvalido(f"El reporte {reporte_id} tiene un JSON inválido") from error
+    if not isinstance(data, dict) or not data:
         raise InformeInvalido(f"El reporte {reporte_id} no tiene el formato esperado")
     return fila, data
 
@@ -317,7 +320,7 @@ PROGRAMADO_BOMBA = {'volumen': 20, 'tiempo': 20, 'flujo': 60}   # ml, min, ml/h 
 TOLERANCIA_BOMBA_PCT = 5
 
 
-def _contexto_bomba(data):
+def _contexto_bomba(data, comun):
     p = 'protocolo_infusion.'
     volumen_medido = data.get(p + 'volumen_medio', '')
     tiempo_medido = data.get(p + 'tiempo_medio', '')
@@ -375,7 +378,7 @@ TOLERANCIA_FLUJO_LPM = 1.0      # "Flujo ± 1,0 L/min" en el formato Word
 MINIMO_O2_PCT = 89.0            # "Concentración de O2 > 89%" en el formato Word
 
 
-def _contexto_concentrador(data):
+def _contexto_concentrador(data, comun):
     inspeccion = _items(data, [
         ('Efectuar limpieza interna y externa del equipo.', 'servicio.limpieza'),
         ('Verificación de pantalla, botón de encendido', 'verificación de pantalla, botón de encendido.'),
@@ -438,9 +441,9 @@ def construir_contexto(reporte_id):
     contexto['asset'] = pdf_asset
 
     if tipo['clave'] == 'bomba_infusion':
-        contexto.update(_contexto_bomba(data))
+        contexto.update(_contexto_bomba(data, contexto))
     elif tipo['clave'] == 'concentrador_o2':
-        contexto.update(_contexto_concentrador(data))
+        contexto.update(_contexto_concentrador(data, contexto))
     else:
         contexto['secciones'] = _secciones_genericas(tipo, data)
         # La limpieza general ya viene en el formulario de varios equipos; solo se muestra
@@ -458,35 +461,6 @@ def generar_reporte_html(reporte_id):
     return render_template(plantilla, **contexto)
 
 
-def ruta_local_permitida(url):
-    """True si ``url`` es ``data:`` o un ``file://`` dentro de ``static/``."""
-    esquema = urlsplit(url).scheme.lower()
-    if esquema == 'data':
-        return True
-    if esquema != 'file':
-        return False
-    ruta = os.path.realpath(url2pathname(urlsplit(url).path))
-    return ruta.startswith(STATIC_DIR + os.sep)
-
-
-def _fetcher_seguro():
-    """WeasyPrint solo puede leer recursos de ``static/``: sin red ni otros archivos locales.
-
-    Defensa en profundidad: si algún dato del usuario llegara sin escapar a la plantilla
-    (``<img src="http://...">`` o ``file:///etc/passwd``), no se descargaría ni se leería.
-    """
-    from weasyprint.urls import URLFetcher
-
-    class FetcherSeguro(URLFetcher):
-        def fetch(self, url, headers=None):
-            if not ruta_local_permitida(url):
-                logger.warning("Recurso bloqueado en el PDF: %s", url[:200])
-                raise ValueError("Recurso no permitido en el PDF")
-            return super().fetch(url, headers)
-
-    return FetcherSeguro(allowed_protocols=('file', 'data'))
-
-
 def generar_reporte_pdf(reporte_id):
     """Genera el PDF en memoria y devuelve ``bytes`` (no se escriben archivos temporales)."""
     # Import tardío: si faltan las librerías del sistema (Pango) la app sigue arrancando
@@ -494,5 +468,4 @@ def generar_reporte_pdf(reporte_id):
     from weasyprint import HTML
 
     html = generar_reporte_html(reporte_id)   # Jinja2 escapa todos los datos del usuario
-    return HTML(string=html, base_url=STATIC_DIR + os.sep,
-                url_fetcher=_fetcher_seguro()).write_pdf()
+    return HTML(string=html, base_url=STATIC_DIR + os.sep).write_pdf()

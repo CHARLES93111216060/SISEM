@@ -1,23 +1,20 @@
-"""Acceso a datos de SISEM (MySQL).
+"""Acceso a datos de SISEM (PostgreSQL).
 
-Cambios respecto a la versión anterior:
-  * Pool de conexiones en lugar de abrir/cerrar una conexión por consulta.
-  * Los errores se registran con ``logging`` (sin ``print``) y no exponen
-    detalles de la base de datos al usuario.
-  * Las lecturas de catálogos devuelven ``[]`` si fallan; las escrituras y la
-    lectura de un reporte lanzan la excepción para que la app responda 500.
-  * Nuevas funciones para el historial y el tablero.
+Conexión:
+  * ``DATABASE_URL`` (la que entrega Render):  postgresql://usuario:clave@host:5432/base
+  * o, si no existe, las variables sueltas ``db_host``, ``db_port``, ``db_user``,
+    ``db_password`` y ``db_name``.
+  * Para conexiones externas a Render añade ``?sslmode=require`` a la URL.
 
-Las funciones públicas mantienen los mismos nombres y devuelven tuplas, para
-no romper el código existente.
+Las funciones públicas conservan nombres y formato de la versión MariaDB
+(devuelven listas de tuplas: columna 0 = id, columna 1 = nombre).
 """
 import logging
 import os
 from contextlib import contextmanager
 
-import mysql.connector
-from mysql.connector import pooling
 from dotenv import load_dotenv
+from psycopg_pool import ConnectionPool
 
 load_dotenv()
 logger = logging.getLogger(__name__)
@@ -34,54 +31,36 @@ def _env(*nombres, default=None):
     return default
 
 
-def _configuracion():
-    config = {
-        'host': _env('db_host', 'DB_HOST', default='localhost'),
-        'user': _env('db_user', 'DB_USER'),
-        'password': _env('db_password', 'DB_PASSWORD'),
-        'database': _env('db_name', 'DB_NAME'),
-        'port': int(_env('db_port', 'DB_PORT', default='3306')),
-        'charset': 'utf8mb4',
-        'connection_timeout': 10,
-    }
-    # Para bases de datos en la nube que exigen TLS: db_ssl_ca=/ruta/ca.pem
-    ssl_ca = _env('db_ssl_ca', 'DB_SSL_CA')
-    if ssl_ca:
-        config['ssl_ca'] = ssl_ca
-    return config
-
-
 def _obtener_pool():
     global _pool
     if _pool is None:
-        tamano = int(_env('db_pool_size', 'DB_POOL_SIZE', default='5'))
-        _pool = pooling.MySQLConnectionPool(
-            pool_name='sisem_pool',
-            pool_size=tamano,
-            pool_reset_session=True,
-            **_configuracion(),
+        url = _env('DATABASE_URL', default='')
+        kwargs = {'connect_timeout': 10}
+        if not url:
+            kwargs.update({
+                'host': _env('db_host', 'DB_HOST', default='localhost'),
+                'port': int(_env('db_port', 'DB_PORT', default='5432')),
+                'user': _env('db_user', 'DB_USER'),
+                'password': _env('db_password', 'DB_PASSWORD'),
+                'dbname': _env('db_name', 'DB_NAME'),
+            })
+        _pool = ConnectionPool(
+            conninfo=url,
+            kwargs=kwargs,
+            min_size=1,
+            max_size=int(_env('db_pool_size', 'DB_POOL_SIZE', default='5')),
+            timeout=10,
+            open=True,
         )
     return _pool
 
 
 @contextmanager
-def _cursor(commit=False):
-    """Entrega un cursor y devuelve la conexión al pool al terminar."""
-    conexion = _obtener_pool().get_connection()
-    try:
-        cursor = conexion.cursor()
-        try:
+def _cursor():
+    """Cursor dentro de una transacción: confirma al salir bien y deshace si hay error."""
+    with _obtener_pool().connection() as conexion:
+        with conexion.cursor() as cursor:
             yield cursor
-            if commit:
-                conexion.commit()
-        except Exception:
-            if commit:
-                conexion.rollback()
-            raise
-        finally:
-            cursor.close()
-    finally:
-        conexion.close()  # en un pool, close() solo la devuelve
 
 
 def _leer_catalogo(consulta, parametros=None):
@@ -99,23 +78,23 @@ def _leer_catalogo(consulta, parametros=None):
 # Catálogos (la columna 0 es el id y la columna 1 el nombre)
 # -----------------------------------------------------------------------------------------
 def servicios():
-    return _leer_catalogo("SELECT * FROM mantenimientos;")
+    return _leer_catalogo("SELECT id, tipo_mantenimiento FROM mantenimientos ORDER BY id;")
 
 
 def personal():
-    return _leer_catalogo("SELECT * FROM personal;")
+    return _leer_catalogo("SELECT id, nombre FROM personal ORDER BY nombre;")
 
 
 def marcas():
-    return _leer_catalogo("SELECT * FROM marcas;")
+    return _leer_catalogo("SELECT id, brand FROM marcas ORDER BY brand;")
 
 
 def clientes():
-    return _leer_catalogo("SELECT * FROM clientes;")
+    return _leer_catalogo("SELECT id, nombre FROM clientes ORDER BY nombre;")
 
 
 def tipo_equipos():
-    return _leer_catalogo("SELECT * FROM tipo_equipo;")
+    return _leer_catalogo("SELECT id, equipo FROM tipo_equipo ORDER BY id;")
 
 
 # -----------------------------------------------------------------------------------------
@@ -125,11 +104,11 @@ def subir_reporte(tecnico, cliente, equipo, fecha, reporte):
     """Guarda un reporte y devuelve ``(id_nuevo, equipo)``. Lanza si falla."""
     consulta = (
         "INSERT INTO reportes (id_tecnico, id_cliente, id_equipo, fecha, reporte) "
-        "VALUES (%s, %s, %s, %s, %s);"
+        "VALUES (%s, %s, %s, %s, %s) RETURNING id;"
     )
-    with _cursor(commit=True) as cursor:
+    with _cursor() as cursor:
         cursor.execute(consulta, (tecnico, cliente, equipo, fecha, reporte))
-        ultimo_id = cursor.lastrowid
+        ultimo_id = cursor.fetchone()[0]
     logger.info("Reporte guardado con id %s", ultimo_id)
     return ultimo_id, equipo
 
@@ -159,7 +138,7 @@ def contar_reportes(desde_fecha=None):
     try:
         with _cursor() as cursor:
             if desde_fecha:
-                cursor.execute("SELECT COUNT(*) FROM reportes WHERE fecha >= %s;", (desde_fecha,))
+                cursor.execute("SELECT COUNT(*) FROM reportes WHERE fecha >= %s::date;", (desde_fecha,))
             else:
                 cursor.execute("SELECT COUNT(*) FROM reportes;")
             return int(cursor.fetchone()[0])

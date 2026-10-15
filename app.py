@@ -87,6 +87,15 @@ if not _hash_admin and os.getenv('DEFAULT_PASSWORD'):
     _hash_admin = generate_password_hash(os.getenv('DEFAULT_PASSWORD'))
     logger.warning("Se usa DEFAULT_PASSWORD en texto plano. Define ADMIN_PASSWORD_HASH "
                    "y elimina DEFAULT_PASSWORD del .env.")
+if _hash_admin:
+    _hash_admin = _hash_admin.strip().strip('"').strip("'")
+    try:
+        check_password_hash(_hash_admin, 'prueba')      # solo valida el formato
+    except Exception:
+        logger.error("ADMIN_PASSWORD_HASH tiene un formato inválido (debe empezar por "
+                     "'scrypt:32768:8:1$' o 'pbkdf2:sha256:...$'). Nadie podrá iniciar sesión "
+                     "hasta corregirlo; genera uno nuevo con tools/generar_hash.py.")
+        _hash_admin = None
 if not (ADMIN_USER and _hash_admin):
     logger.error("No hay credenciales configuradas (ADMIN_USER/ADMIN_PASSWORD_HASH): "
                  "nadie podrá iniciar sesión.")
@@ -329,8 +338,6 @@ def load_form(form_type):
     plantilla = FORMULARIOS.get(form_type)     # lista blanca: no se usa texto del usuario
     if not plantilla:
         return jsonify({"error": "Tipo de formulario no encontrado"}), 404
-    if form_type != 'Protocolo_de_mantenimiento':     # el único que usa los catálogos
-        return render_template(plantilla)
     return render_template(
         plantilla,
         tecnicos=db.personal() or [],
@@ -362,7 +369,9 @@ def _validar_informe(datos):
                 return None, f"Valor inválido en «{clave[:60]}»."
         elif not isinstance(valor, str) or len(valor) > _MAX_TEXTO:
             return None, f"Valor inválido en «{clave[:60]}»."
-        limpios[clave] = valor
+        # PostgreSQL rechaza el carácter NUL en columnas de texto
+        limpios[clave] = ([v.replace('\x00', '') for v in valor] if isinstance(valor, list)
+                          else valor.replace('\x00', ''))
 
     for clave in ("tecnico.nombre", "cliente.nombre", "equipo.tipo", "general.fecha_mantenimiento"):
         if not isinstance(limpios.get(clave), str) or not limpios[clave].strip():
