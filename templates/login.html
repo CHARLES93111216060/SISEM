@@ -1,27 +1,27 @@
 <!DOCTYPE html>
-<html lang="en">
+<html lang="es">
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <link rel="stylesheet" href="{{ url_for('static', filename='css/login.css') }}">
     <link rel="icon" href="{{ url_for('static', filename='images/logo_biomega.ico') }}" type="image/x-icon">
-
-    <title>SISEM</title>
+    <title>Iniciar sesión · SISEM</title>
 </head>
 <body>
     <div class="container">
         <div class="izquierda">
             <div class="formulario">
-                <h2>Incio de Sesión</h2>
+                <h2>Inicio de sesión</h2>
                 {% if error %}
-                    <div class="error">
+                    <div class="error" role="alert">
                         <p>{{ error }}</p>
                     </div>
                 {% endif %}
-                <form action="/login" method="POST">
-                    <input type="text" name="username" placeholder="Usuario" required>
-                    <input type="password" name="password" placeholder="Contraseña" required>
-                    <button type="submit" >Iniciar Sesión</button>
+                <form action="{{ url_for('login') }}" method="POST">
+                    <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+                    <input type="text" name="username" placeholder="Usuario" autocomplete="username" required autofocus>
+                    <input type="password" name="password" placeholder="Contraseña" autocomplete="current-password" required>
+                    <button type="submit">Iniciar sesión</button>
                 </form>
             </div>
         </div>
@@ -30,10 +30,9 @@
             <p>Sistema Integrado de Seguimiento de Equipos Médicos</p>
         </div>
     </div>
-</body>
 
-<footer>
-    <p>&copy; BIOMEGA - INGENIERIA Y MANTENIMIENTO - 2026 SISEM. Todos los derechos reservados.</p>
-    
-</footer>
+    <footer>
+        <p>&copy; BIOMEGA - INGENIERIA Y MANTENIMIENTO - 2026 SISEM. Todos los derechos reservados.</p>
+    </footer>
+</body>
 </html>

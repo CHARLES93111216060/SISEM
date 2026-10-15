@@ -1,21 +1,15 @@
 {% extends "layout/base.html" %}
-
-{% block title %}
-    Clientes SISEM
-{% endblock %}
-
-
+{% block title %}Clientes{% endblock %}
 {% block content %}
 <div class="dashboard-shell">
     <section class="page-hero">
         <div>
             <span class="eyebrow">Gestión de clientes</span>
             <h2>Base de datos corporativa</h2>
-            <p>Consulta y gestiona los clientes registrados en el sistema con una vista ordenada y profesional.</p>
+            <p>Clientes registrados en el sistema.</p>
         </div>
         <div class="hero-actions">
-            <a class="btn btn-primary" href="#">Nuevo cliente</a>
-            <a class="btn btn-secondary" href="/dashboard">Volver al panel</a>
+            <a class="btn btn-secondary" href="{{ url_for('dashboard') }}">Volver al panel</a>
         </div>
     </section>
 
@@ -23,37 +17,26 @@
         <div class="panel-head">
             <div>
                 <h3>Clientes registrados</h3>
-                <p>Información consolidada para seguimiento operativo.</p>
+                <p>{{ clientes|length }} en total</p>
             </div>
-            <span class="status-badge status-active">Activo</span>
         </div>
 
+        {% if clientes %}
         <div class="table-responsive">
             <table>
                 <thead>
-                    <tr>
-                        <th>Cliente</th>
-                        <th>Área</th>
-                        <th>Estado</th>
-                        <th>Última interacción</th>
-                    </tr>
+                    <tr><th>ID</th><th>Cliente</th></tr>
                 </thead>
                 <tbody>
-                    <tr>
-                        <td>Clínica Santa Marta</td>
-                        <td>Cardiología</td>
-                        <td><span class="status-badge status-active">En seguimiento</span></td>
-                        <td>14 Jul 2026</td>
-                    </tr>
-                    <tr>
-                        <td>Hospital Central</td>
-                        <td>Respiratorio</td>
-                        <td><span class="status-badge status-pending">Pendiente</span></td>
-                        <td>10 Jul 2026</td>
-                    </tr>
+                    {% for c in clientes %}
+                    <tr><td>{{ c[0] }}</td><td>{{ c[1] }}</td></tr>
+                    {% endfor %}
                 </tbody>
             </table>
         </div>
+        {% else %}
+        <p class="vacio">No hay clientes registrados.</p>
+        {% endif %}
     </div>
 </div>
 {% endblock %}

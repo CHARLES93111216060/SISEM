@@ -1,0 +1,10 @@
+# Secretos: NUNCA subir al repositorio
+.env
+
+__pycache__/
+*.pyc
+venv/
+.venv/
+*.pdf
+.idea/
+.vscode/

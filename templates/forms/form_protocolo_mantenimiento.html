@@ -15,6 +15,7 @@
             type="date"
             class="form-control"
             name="general.fecha_mantenimiento"
+            required
         >
     </div>
 
@@ -27,6 +28,7 @@
             id="equipos"
             name="equipo.tipo"
             class="form-control"
+            required
         >
             <option value="">--Seleccione--</option>
             {% for tipo in tipo_equipos %}
@@ -49,6 +51,7 @@
         <select
             name="cliente.nombre"
             class="form-control"
+            required
         >
             <option value="">-- Seleccione --</option>
             {% for cliente in clientes %}
@@ -209,6 +212,7 @@
                 type="number"
                 class="form-control"
                 placeholder="Cantidad"
+                min="0"
                 name="repuestos.cantidad_1"
             >
         </div>
@@ -265,7 +269,7 @@
             Técnico responsable
         </label>
 
-        <select name="tecnico.nombre" class="form-control">
+        <select name="tecnico.nombre" class="form-control" required>
             <option value="">-- Seleccione --</option>
             {% for tecnico in tecnicos %}
             <option value="{{tecnico[0]}}">{{tecnico[1]}}</option>

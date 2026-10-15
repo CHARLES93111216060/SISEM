@@ -1,0 +1,17 @@
+<div class="bloque no-corte">
+  <table>
+    <tr><td class="azul" style="width:36%">Estado final del Equipo:</td><td class="c">{{ estado_final }}</td></tr>
+  </table>
+  <div class="legal">La firma y aprobación de este reporte puede autorizar a BIOMEGA INGENIERÍA Y MANTENIMIENTO SAS la facturación en los servicios y/o partes instaladas.</div>
+  <table class="firmas">
+    <tr>
+      <td style="width:50%"><div class="f-caja">Recibido en el servicio por:<div class="f-cargo">Cargo:</div></div></td>
+      <td style="width:50%"><div class="f-caja">Entregado / Realizado por:
+        <div class="f-nombre">{{ profesional }}</div>
+        <div class="f-cargo">Cargo: Biomédico.</div>
+        <img class="f-sello" src="{{ asset('images/pdf_sello.png') }}" alt="">
+      </div></td>
+    </tr>
+  </table>
+  <div class="vobo">VoBo. Por:<div class="f-cargo">Cargo:</div></div>
+</div>

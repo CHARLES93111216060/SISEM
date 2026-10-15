@@ -1,0 +1,95 @@
+{% extends 'pdf/base.html' %}
+{% block cuerpo %}
+<table class="cols">
+  <tr>
+    <!-- ============ COLUMNA IZQUIERDA ============ -->
+    <td class="col-izq">
+      <div class="bloque">
+        <table>
+          <tr>
+            <td class="azul" style="width:22%">N° de Mant.:</td><td class="c" style="width:26%">{{ num_mant }}</td>
+            <td class="azul" style="width:26%">Fecha del Mant.:</td><td class="c">{{ fecha }}</td>
+          </tr>
+        </table>
+      </div>
+
+      {% include 'pdf/_cliente.html' %}
+      {% include 'pdf/_equipo.html' %}
+
+      <div class="bloque">
+        <div class="barra">Equipamiento Requerido.</div>
+        <table>
+          <tr><td class="c">Herramienta Básica.</td><td class="c">Artículos de limpieza y desinfección.</td></tr>
+          <tr><td class="c">Analizador de Bombas de Infusión</td><td class="c">Multímetro Digital.</td></tr>
+          <tr><td class="c">Circuito de infusión</td><td>&nbsp;</td></tr>
+        </table>
+      </div>
+
+      {% include 'pdf/_servicio.html' %}
+
+      <div class="bloque">
+        <div class="barra">Inspección del Equipo.</div>
+        <table class="items">
+          <colgroup><col style="width:7%"><col><col style="width:26%"></colgroup>
+          <tr class="cab"><td colspan="2">ITEMS</td><td>Estado.</td></tr>
+          {% for i in inspeccion %}
+          <tr><td class="num">{{ i.n }}.</td><td>{{ i.texto }}</td><td class="est {{ 'malo' if i.incumple }}">{{ i.valor }}</td></tr>
+          {% endfor %}
+        </table>
+      </div>
+
+      <div class="bloque">
+        <div class="barra">Verificación de Flujo (ml/h), Tiempo (min.) y Volumen (ml.) (+/- {{ tolerancia }}%)</div>
+        <table class="med">
+          <tr>
+            <td>Volumen Prog.</td><td>{{ prog.volumen }} <span class="unidad">ml.</span></td>
+            <td>Volumen Med.</td><td>{{ med.volumen }} <span class="unidad">ml.</span></td>
+            <td rowspan="3" style="width:10%">Cumple<br><strong>{{ cumple }}</strong></td>
+            <td>{{ med.error_volumen }} <span class="unidad">ml.</span></td>
+            <td>{{ med.pct_volumen }} <span class="unidad">%</span></td>
+          </tr>
+          <tr>
+            <td>Tiempo Prog.</td><td>{{ prog.tiempo }} <span class="unidad">min.</span></td>
+            <td>Tiempo Med.</td><td>{{ med.tiempo }} <span class="unidad">min.</span></td>
+            <td>{{ med.error_tiempo }} <span class="unidad">min.</span></td>
+            <td>{{ med.pct_tiempo }} <span class="unidad">%</span></td>
+          </tr>
+          <tr>
+            <td>Flujo Prog.</td><td>{{ prog.flujo }} <span class="unidad">ml/h</span></td>
+            <td>Flujo Med.</td><td>{{ med.flujo }} <span class="unidad">ml/h</span></td>
+            <td>{{ med.error_flujo }} <span class="unidad">ml/h</span></td>
+            <td>{{ med.pct_flujo }} <span class="unidad">%</span></td>
+          </tr>
+        </table>
+      </div>
+
+      <div class="bloque">
+        <div class="barra">Verificación de Alarmas.</div>
+        <table class="items">
+          <colgroup><col style="width:7%"><col><col style="width:26%"></colgroup>
+          <tr class="cab"><td colspan="2">ITEMS</td><td>Estado.</td></tr>
+          {% for i in alarmas %}
+          <tr><td class="num">{{ i.n }}.</td><td>{{ i.texto }}</td><td class="est {{ 'malo' if i.incumple }}">{{ i.valor }}</td></tr>
+          {% endfor %}
+        </table>
+      </div>
+    </td>
+
+    <td class="col-gap"></td>
+
+    <!-- ============ COLUMNA DERECHA ============ -->
+    <td class="col-der">
+      <div class="bloque">
+        <div class="barra">Actividad Realizada.</div>
+        <div class="caja">{{ actividad }}</div>
+      </div>
+      <div class="bloque">
+        <div class="barra">Observaciones.</div>
+        <div class="caja">{{ observaciones }}</div>
+      </div>
+      {% include 'pdf/_repuestos.html' %}
+      {% include 'pdf/_cierre.html' %}
+    </td>
+  </tr>
+</table>
+{% endblock %}

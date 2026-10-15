@@ -1,0 +1,17 @@
+{% extends "layout/base.html" %}
+{% block title %}{{ titulo }}{% endblock %}
+{% block content %}
+<div class="dashboard-shell">
+    <section class="page-hero">
+        <div>
+            <span class="eyebrow">En construcción</span>
+            <h2>{{ titulo }}</h2>
+            <p>Este módulo todavía no está disponible. Mientras tanto puedes generar reportes de mantenimiento y consultar el historial.</p>
+        </div>
+        <div class="hero-actions">
+            <a class="btn btn-primary" href="{{ url_for('mantenimiento_correctivo') }}">Generar reporte</a>
+            <a class="btn btn-secondary" href="{{ url_for('historial') }}">Ver historial</a>
+        </div>
+    </section>
+</div>
+{% endblock %}

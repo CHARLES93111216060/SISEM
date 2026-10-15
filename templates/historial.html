@@ -1,0 +1,70 @@
+{% extends "layout/base.html" %}
+{% block title %}Historial de mantenimiento{% endblock %}
+{% block content %}
+<div class="dashboard-shell">
+    <section class="page-hero">
+        <div>
+            <span class="eyebrow">Módulo de mantenimiento</span>
+            <h2>Historial de reportes</h2>
+            <p>Consulta los reportes guardados y vuelve a descargar su PDF.</p>
+        </div>
+        <div class="hero-actions">
+            <a class="btn btn-primary" href="{{ url_for('mantenimiento_correctivo') }}">Nuevo reporte</a>
+        </div>
+    </section>
+
+    <div class="page-panel">
+        <div class="panel-head">
+            <div>
+                <h3>Reportes guardados</h3>
+                <p>{{ total }} en total</p>
+            </div>
+        </div>
+
+        {% if reportes %}
+        <div class="table-responsive">
+            <table>
+                <thead>
+                    <tr>
+                        <th>N°</th>
+                        <th>Fecha</th>
+                        <th>Cliente</th>
+                        <th>Equipo</th>
+                        <th>Técnico</th>
+                        <th><span class="sr-only">Acciones</span></th>
+                    </tr>
+                </thead>
+                <tbody>
+                    {% for r in reportes %}
+                    <tr>
+                        <td>{{ r.id }}</td>
+                        <td>{{ r.fecha }}</td>
+                        <td>{{ r.cliente }}</td>
+                        <td>{{ r.equipo }}</td>
+                        <td>{{ r.tecnico }}</td>
+                        <td class="acciones">
+                            <button type="button" class="btn btn-primary btn-sm js-descargar"
+                                    data-url="{{ url_for('descargar_informe', report_id=r.id) }}"
+                                    data-id="{{ r.id }}">Descargar PDF</button>
+                        </td>
+                    </tr>
+                    {% endfor %}
+                </tbody>
+            </table>
+        </div>
+        <div id="mensajeHistorial" class="alert" role="status" hidden></div>
+
+        {% if paginas > 1 %}
+        <nav class="paginacion" aria-label="Paginación">
+            {% if pagina > 1 %}<a class="btn btn-secondary btn-sm" href="{{ url_for('historial', pagina=pagina-1) }}">← Anterior</a>{% endif %}
+            <span>Página {{ pagina }} de {{ paginas }}</span>
+            {% if pagina < paginas %}<a class="btn btn-secondary btn-sm" href="{{ url_for('historial', pagina=pagina+1) }}">Siguiente →</a>{% endif %}
+        </nav>
+        {% endif %}
+        {% else %}
+        <p class="vacio">Todavía no hay reportes guardados.</p>
+        {% endif %}
+    </div>
+</div>
+{% endblock %}
+{% block scripts %}<script src="{{ url_for('static', filename='js/historial.js') }}"></script>{% endblock %}

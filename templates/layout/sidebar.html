@@ -7,7 +7,7 @@
                 <span class="brand-subtitle">Mantenimiento & Gestión</span>
             </div>
         </div>
-        <button class="menu-btn" type="button" aria-label="Toggle menu">
+        <button class="menu-btn" type="button" aria-label="Mostrar u ocultar el menú" aria-expanded="false">
             <img src="{{ url_for('static', filename='images/menu.svg') }}" alt="menu" class="menu-icon">
         </button>
     </div>
@@ -22,7 +22,7 @@
             </li>
 
             <li class="nav-item has-submenu">
-                <button class="nav-link submenu-toggle" type="button">
+                <button class="nav-link submenu-toggle" type="button" aria-expanded="false">
                     <img src="{{ url_for('static', filename='images/tools.svg') }}" alt="Mantenimiento" class="nav-icon">
                     <span>Mantenimiento</span>
                     <span class="submenu-arrow">▾</span>
@@ -43,7 +43,7 @@
             </li>
 
             <li class="nav-item has-submenu">
-                <button class="nav-link submenu-toggle" type="button">
+                <button class="nav-link submenu-toggle" type="button" aria-expanded="false">
                     <img src="{{ url_for('static', filename='images/remisiones.svg') }}" alt="Comercial" class="nav-icon">
                     <span>Comercial</span>
                     <span class="submenu-arrow">▾</span>
@@ -56,7 +56,7 @@
             </li>
 
             <li class="nav-item has-submenu">
-                <button class="nav-link submenu-toggle" type="button">
+                <button class="nav-link submenu-toggle" type="button" aria-expanded="false">
                     <img src="{{ url_for('static', filename='images/worker.svg') }}" alt="Talento Humano" class="nav-icon">
                     <span>Talento humano</span>
                     <span class="submenu-arrow">▾</span>
@@ -71,13 +71,13 @@
             </li>
 
             <li class="nav-item has-submenu">
-                <button class="nav-link submenu-toggle" type="button">
+                <button class="nav-link submenu-toggle" type="button" aria-expanded="false">
                     <img src="{{ url_for('static', filename='images/laboratorio.svg') }}" alt="Laboratorio" class="nav-icon">
                     <span>Laboratorio</span>
                     <span class="submenu-arrow">▾</span>
                 </button>
                 <ul class="submenu">
-                    <li><a href="/laboratorio/cronograma de metrologia">Cronograma de metrología</a></li>
+                    <li><a href="/laboratorio/cronograma_metrologia">Cronograma de metrología</a></li>
                     <li><a href="/laboratorio/reportes_metrologia">Generar reportes de metrología</a></li>
                     <li><a href="/laboratorio/hojas_de_vida">Consulta de hojas de vida</a></li>
                 </ul>
@@ -86,7 +86,7 @@
     </nav>
 
     <div class="sidebar-footer">
-        <a href="https://wa.me/573007619113?text=Hola, quiero más información sobre SISEM" target="_blank" class="contact-cta">
+        <a href="https://wa.me/573007619113?text=Hola, quiero más información sobre SISEM" target="_blank" rel="noopener noreferrer" class="contact-cta">
             <img class="wsp-icon" src="{{ url_for('static', filename='images/wsp.svg') }}" alt="WhatsApp">
             <span>Contáctanos</span>
         </a>

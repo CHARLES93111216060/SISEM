@@ -1,0 +1,71 @@
+{% extends 'pdf/base.html' %}
+{% block cuerpo %}
+<div class="bloque">
+  <table>
+    <tr>
+      <td class="azul" style="width:14%">N° de Mant.:</td><td class="c" style="width:10%">{{ num_mant }}</td>
+      <td class="azul" style="width:16%">Fecha del Mant.:</td><td class="c" style="width:14%">{{ fecha }}</td>
+      <td class="azul" style="width:16%">Tipo de Servicio:</td><td class="c">{{ servicio }}</td>
+    </tr>
+  </table>
+</div>
+
+<table class="cols no-corte">
+  <tr>
+    <td class="col-izq">{% include 'pdf/_cliente.html' %}</td>
+    <td class="col-gap"></td>
+    <td class="col-der">{% include 'pdf/_equipo.html' %}</td>
+  </tr>
+</table>
+
+{% set ns = namespace(n=0) %}
+
+{% if mostrar_limpieza_comun %}
+{% set ns.n = ns.n + 1 %}
+<div class="bloque">
+  <div class="barra">Inspección del Equipo.</div>
+  <table class="items">
+    <colgroup><col style="width:5%"><col><col style="width:22%"></colgroup>
+    <tr class="cab"><td colspan="2">ITEMS</td><td>Estado.</td></tr>
+    <tr><td class="num">{{ ns.n }}.</td><td>Efectuar limpieza interna y externa del equipo.</td>
+        <td class="est {{ 'malo' if limpieza|lower == 'no cumple' }}">{{ limpieza }}</td></tr>
+  </table>
+</div>
+{% endif %}
+
+{% for sec in secciones %}
+<div class="bloque">
+  <div class="barra">{{ sec.titulo }}</div>
+  <table class="items">
+    <colgroup><col style="width:5%"><col><col style="width:22%"></colgroup>
+    <tr class="cab"><td colspan="2">ITEMS</td><td>Estado / valor</td></tr>
+    {% for f in sec.filas %}
+    {% set ns.n = ns.n + 1 %}
+    <tr><td class="num">{{ ns.n }}.</td><td>{{ f.texto }}</td><td class="est {{ 'malo' if f.incumple }}">{{ f.valor }}</td></tr>
+    {% endfor %}
+  </table>
+</div>
+{% else %}
+<div class="bloque"><div class="caja c">Este tipo de equipo todavía no tiene campos de protocolo definidos en su formulario.</div></div>
+{% endfor %}
+
+<table class="cols no-corte">
+  <tr>
+    <td class="col-izq">
+      <div class="bloque"><div class="barra">Actividad Realizada.</div><div class="caja">{{ actividad }}</div></div>
+    </td>
+    <td class="col-gap"></td>
+    <td class="col-der">
+      <div class="bloque"><div class="barra">Observaciones.</div><div class="caja">{{ observaciones }}</div></div>
+    </td>
+  </tr>
+</table>
+
+<table class="cols no-corte">
+  <tr>
+    <td class="col-izq">{% include 'pdf/_repuestos.html' %}</td>
+    <td class="col-gap"></td>
+    <td class="col-der">{% include 'pdf/_cierre.html' %}</td>
+  </tr>
+</table>
+{% endblock %}

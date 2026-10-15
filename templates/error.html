@@ -1,0 +1,16 @@
+{% extends "layout/base.html" %}
+{% block title %}Error {{ codigo }}{% endblock %}
+{% block content %}
+<div class="dashboard-shell">
+    <section class="page-hero">
+        <div>
+            <span class="eyebrow">Error {{ codigo }}</span>
+            <h2>{{ mensaje }}</h2>
+            <p>Si el problema continúa, contacta al administrador del sistema.</p>
+        </div>
+        <div class="hero-actions">
+            <a class="btn btn-primary" href="{{ url_for('dashboard') }}">Ir al inicio</a>
+        </div>
+    </section>
+</div>
+{% endblock %}

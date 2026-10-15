@@ -1,8 +1,7 @@
-{% block content %}
 <header class="header">
     <div class="header-left">
         <div class="header-title-group">
-            <div class="header-icon">📊</div>
+            <div class="header-icon" aria-hidden="true">📊</div>
             <div>
                 <h2>Panel SISEM</h2>
                 <p>Gestión integral y seguimiento operativo</p>
@@ -14,7 +13,9 @@
             <span class="user-label">Bienvenido</span>
             <strong>{{ session['username'] }}</strong>
         </div>
-        <a href="/logout" class="log-out">Cerrar sesión</a>
+        <form action="{{ url_for('logout') }}" method="post" class="logout-form">
+            <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+            <button type="submit" class="log-out">Cerrar sesión</button>
+        </form>
     </div>
 </header>
-{% endblock %}

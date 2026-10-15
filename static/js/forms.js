@@ -1,114 +1,132 @@
-// Selector de formulario principal AJAX
-const seleccion = document.getElementById('formSelector');
-const container = document.getElementById('dynamicform');
+// Formulario de reportes de mantenimiento (carga dinámica, guardado y descarga del PDF).
+(function () {
+    'use strict';
 
-// funcion reutilizable
-function selector(selectorElement, containerElement){
-    if(!selectorElement){
-        return;
-    }
-    
-    selectorElement.addEventListener('change', async () => {
-    const valor = selectorElement.value;
+    const selectorPrincipal = document.getElementById('formSelector');
+    const contenedor = document.getElementById('dynamicform');
+    if (!selectorPrincipal || !contenedor) return;
 
-    if(!valor){
-        containerElement.innerHTML = '';
-        return;
-    }
-
-    try {
-        const response = await fetch(`/load_form/${valor}`);
-        if(!response.ok){
-            throw new Error(`HTTP error: ${response.status}`);
+    // ---- mensajes en pantalla (en lugar de alert()) -------------------------------------
+    function mensaje(texto, tipo) {
+        let caja = document.getElementById('mensajeFormulario');
+        if (!caja) {
+            caja = document.createElement('div');
+            caja.id = 'mensajeFormulario';
+            caja.setAttribute('role', 'status');
+            contenedor.prepend(caja);
         }
-        const html = await response.text();
-        containerElement.innerHTML = html;
-        // incializando formularios anidados
-        formulario_anidado();
-        //inicializar boton
-        guardarProtocoloMantenimiento();
-    }
-    
-    catch (error) {
-        // console.error('Error al cargar el formulario:', error);
-        containerElement.innerHTML = '<p>Error al cargar el formulario. Por favor, inténtalo de nuevo.</p>';
-    }
-    });
-}
-
-
-// funcion para inicializar formulario anidado
-function formulario_anidado(){
-    // Selector de tipo de equipo   
-    const selector_equipo = document.getElementById('equipos');
-    const container_equipo = document.getElementById('formulario_especifico'); 
-
-    if(selector_equipo){
-        selector(selector_equipo, container_equipo);
-    }
-}
-
-selector(seleccion, container);
-
-// Guardar informe AJAX
-function guardarProtocoloMantenimiento(){
-    const boton = document.getElementById('guardarInforme');
-    if(!boton){
-        // console.warn('Guardar informe button not found');
-        alert('Error: Botón de guardar informe no encontrado');
-        return;
+        caja.className = 'alert alert-' + tipo;
+        caja.textContent = texto;
+        caja.hidden = !texto;
+        if (texto) caja.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
     }
 
-    boton.onclick = async (e)=>{
-        e.preventDefault();
-        const formulario = document.getElementById('protocoloForm');
-        
-        if(!formulario){
-            // console.error('Protocol form not found');
-            alert('Error: Formulario no encontrado');
-            return;
+    // ---- carga de formularios por AJAX -------------------------------------------------
+    async function cargarFormulario(valor, destino) {
+        if (!valor) {
+            destino.innerHTML = '';
+            return false;
         }
-        
-        const formData = new FormData(formulario);
+        try {
+            const respuesta = await fetch(`/load_form/${encodeURIComponent(valor)}`, {
+                headers: { 'X-Requested-With': 'XMLHttpRequest' },
+            });
+            if (respuesta.status === 401) {
+                window.location.assign('/login');
+                return false;
+            }
+            if (!respuesta.ok) throw new Error(`HTTP ${respuesta.status}`);
+            destino.innerHTML = await respuesta.text();   // HTML generado por el servidor
+            return true;
+        } catch (error) {
+            destino.textContent = 'Error al cargar el formulario. Por favor, inténtalo de nuevo.';
+            return false;
+        }
+    }
+
+    // Enlaza el selector de tipo de equipo, que carga el formulario específico.
+    function enlazarSelectorEquipo() {
+        const equipos = document.getElementById('equipos');
+        const destino = document.getElementById('formulario_especifico');
+        if (!equipos || !destino) return;
+        equipos.addEventListener('change', () => cargarFormulario(equipos.value, destino));
+    }
+
+    // ---- guardado ----------------------------------------------------------------------
+    function recolectarDatos(formulario) {
         const datos = {};
-        
-        formData.forEach((valor, clave)=>{
-            if(datos[clave]){
-                if(!Array.isArray(datos[clave])){
-                    datos[clave] = [datos[clave]];
-                }
+        new FormData(formulario).forEach((valor, clave) => {
+            if (typeof valor !== 'string') return;
+            if (Object.prototype.hasOwnProperty.call(datos, clave)) {
+                if (!Array.isArray(datos[clave])) datos[clave] = [datos[clave]];
                 datos[clave].push(valor);
-            }else{
+            } else {
                 datos[clave] = valor;
             }
-    });
-        try{
-            const response = await fetch("/mantenimiento/reportes/guardar_informe",{
-                method:"POST",
-                headers:{
-                    "Content-Type":"application/json"
-                },
-                body:JSON.stringify(datos)
-            });
-            // console.log(datos)
-            
-            if(!response.ok){
-                throw new Error(`HTTP error! status: ${response.status}`);
-            }
-            
-            const resultado = await response.json();
-            alert(resultado.mensaje || 'Informe guardado correctamente');
-            // Si el servidor devuelve el id, iniciar la descarga automática
-            if(resultado.id){
-                alert(`Informe guardado con ID: ${resultado.id}. Iniciando descarga, por favor espera...`);
-                const downloadUrl = `/mantenimiento/reportes/${resultado.id}/descargar`;
-                // abrir en la misma ventana para que el navegador gestione la descarga
-                window.location = downloadUrl;
-            }
-        }catch(error){
-            // console.error('Error al guardar:', error);
-            alert('Error al guardar el informe. Revisa la consola.');
-        }
-    };
-}
+        });
+        return datos;
+    }
 
+    function enlazarGuardado() {
+        const boton = document.getElementById('guardarInforme');
+        const formulario = document.getElementById('protocoloForm');
+        if (!boton || !formulario) return;   // los otros formularios no tienen botón de guardar
+
+        boton.addEventListener('click', async (evento) => {
+            evento.preventDefault();
+            if (!formulario.reportValidity()) return;   // respeta los campos "required"
+
+            const textoOriginal = boton.textContent;
+            boton.disabled = true;
+            boton.textContent = 'Guardando…';
+            mensaje('', 'info');
+
+            let id = null;
+            try {
+                const respuesta = await fetch('/mantenimiento/reportes/guardar_informe', {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json',
+                        'X-CSRF-Token': window.SISEM.csrf(),
+                        'X-Requested-With': 'XMLHttpRequest',
+                    },
+                    body: JSON.stringify(recolectarDatos(formulario)),
+                });
+                if (respuesta.status === 401) {
+                    window.location.assign('/login');
+                    return;
+                }
+                const resultado = await respuesta.json().catch(() => ({}));
+                if (!respuesta.ok) throw new Error(resultado.error || 'No se pudo guardar el informe.');
+                id = resultado.id;
+            } catch (error) {
+                mensaje(error.message, 'error');
+                boton.disabled = false;
+                boton.textContent = textoOriginal;
+                return;
+            }
+
+            mensaje(`Informe N° ${id} guardado. Generando el PDF…`, 'info');
+            try {
+                await window.SISEM.descargarPDF(
+                    `/mantenimiento/reportes/${id}/descargar`, `reporte_${id}.pdf`);
+                mensaje(`Informe N° ${id} guardado y PDF descargado.`, 'ok');
+            } catch (error) {
+                // El informe ya está guardado: solo falló el PDF.
+                mensaje(`El informe N° ${id} se guardó, pero no se pudo generar el PDF (${error.message}). ` +
+                        'Puedes descargarlo más tarde desde el Historial.', 'error');
+            } finally {
+                boton.disabled = false;
+                boton.textContent = textoOriginal;
+            }
+        });
+    }
+
+    selectorPrincipal.addEventListener('change', async () => {
+        const cargado = await cargarFormulario(selectorPrincipal.value, contenedor);
+        if (cargado) {
+            enlazarSelectorEquipo();
+            enlazarGuardado();
+        }
+    });
+})();

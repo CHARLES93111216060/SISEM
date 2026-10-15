@@ -1,0 +1,28 @@
+# Blueprint opcional para Render (https://render.com). Los valores "sync: false" se
+# escriben en el panel de Render, no en este archivo.
+services:
+  - type: web
+    name: sisem
+    runtime: docker
+    healthCheckPath: /healthz
+    envVars:
+      - key: SECRET_KEY
+        generateValue: true
+      - key: FLASK_DEBUG
+        value: "false"
+      - key: TRUST_PROXY
+        value: "1"
+      - key: ADMIN_USER
+        sync: false
+      - key: ADMIN_PASSWORD_HASH
+        sync: false
+      - key: db_host
+        sync: false
+      - key: db_port
+        sync: false
+      - key: db_user
+        sync: false
+      - key: db_password
+        sync: false
+      - key: db_name
+        sync: false

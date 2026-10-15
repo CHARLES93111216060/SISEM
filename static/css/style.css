@@ -753,3 +753,126 @@ tbody tr:hover{
         padding:16px;
     }
 }
+
+/* ======================================================================
+   Añadidos: accesibilidad, avisos, historial, menú móvil
+   ====================================================================== */
+
+.sr-only{
+    position:absolute;
+    width:1px;
+    height:1px;
+    padding:0;
+    margin:-1px;
+    overflow:hidden;
+    clip:rect(0,0,0,0);
+    white-space:nowrap;
+    border:0;
+}
+
+.logout-form{
+    margin:0;
+}
+
+.btn:focus-visible,
+.log-out:focus-visible,
+.nav-link:focus-visible,
+.submenu-toggle:focus-visible,
+.menu-btn:focus-visible,
+.form-control:focus-visible{
+    outline:3px solid rgba(62,136,160,0.55);
+    outline-offset:2px;
+}
+
+.btn:disabled{
+    opacity:0.6;
+    cursor:wait;
+    transform:none;
+}
+
+.btn-sm{
+    padding:7px 14px;
+    font-size:0.85rem;
+    border-radius:10px;
+}
+
+.btn-secondary{
+    background:#fff;
+    color:#1f4e79;
+    border:1px solid #c8d2de;
+}
+
+/* Avisos */
+.alert{
+    margin:16px 0;
+    padding:12px 16px;
+    border-radius:12px;
+    border:1px solid transparent;
+    font-size:0.95rem;
+    line-height:1.45;
+}
+
+.alert[hidden]{
+    display:none;
+}
+
+.alert-ok{
+    background:#e8f6ee;
+    border-color:#a8dbbd;
+    color:#14532d;
+}
+
+.alert-info{
+    background:#eaf3fb;
+    border-color:#b9d6ee;
+    color:#1e4e79;
+}
+
+.alert-error{
+    background:#fdecec;
+    border-color:#f2b8b8;
+    color:#7f1d1d;
+}
+
+/* Tablas de historial y clientes */
+td.acciones{
+    text-align:right;
+    white-space:nowrap;
+}
+
+.paginacion{
+    display:flex;
+    align-items:center;
+    justify-content:center;
+    gap:16px;
+    margin-top:18px;
+    color:#425466;
+}
+
+.vacio{
+    padding:28px 0;
+    text-align:center;
+    color:#5b6b7f;
+}
+
+/* Submenús abiertos con clic/tap (además de hover) */
+.has-submenu.abierto .submenu{
+    display:flex;
+}
+
+@media (max-width: 900px) {
+    .sidebar-nav,
+    .sidebar-footer{
+        display:none;
+    }
+
+    body.menu-abierto .sidebar-nav,
+    body.menu-abierto .sidebar-footer{
+        display:block;
+    }
+
+    .header{
+        flex-wrap:wrap;
+        gap:12px;
+    }
+}

@@ -1,37 +1,31 @@
 {% extends "layout/base.html" %}
-
-{% block title %}
-    Dashboard SISEM
-{% endblock %}
-
+{% block title %}Inicio{% endblock %}
 {% block content %}
 <div class="dashboard-shell">
     <section class="page-hero">
         <div>
             <span class="eyebrow">Panel principal</span>
             <h2>Bienvenido a SISEM</h2>
-            <p>Monitorea equipos, alertas y mantenimientos desde un tablero unificado y profesional.</p>
+            <p>Genera reportes de mantenimiento, descarga su PDF y consulta el historial desde un solo lugar.</p>
         </div>
         <div class="hero-actions">
-            <a class="btn btn-primary" href="/mantenimiento/reportes">Crear reporte</a>
-            <a class="btn btn-secondary" href="/clientes">Ver clientes</a>
+            <a class="btn btn-primary" href="{{ url_for('mantenimiento_correctivo') }}">Crear reporte</a>
+            <a class="btn btn-secondary" href="{{ url_for('historial') }}">Ver historial</a>
         </div>
     </section>
 
     <div class="dashboard-cards">
         <div class="card">
-            <h3>Equipos en Monitoreo</h3>
-            <p>12</p>
+            <h3>Reportes generados</h3>
+            <p>{{ est.reportes_total if est.reportes_total is not none else '—' }}</p>
         </div>
-
         <div class="card">
-            <h3>Alertas Activas</h3>
-            <p>3</p>
+            <h3>Reportes este mes</h3>
+            <p>{{ est.reportes_mes if est.reportes_mes is not none else '—' }}</p>
         </div>
-
         <div class="card">
-            <h3>Mantenimiento Programado</h3>
-            <p>5</p>
+            <h3>Clientes registrados</h3>
+            <p>{{ est.clientes }}</p>
         </div>
     </div>
 </div>

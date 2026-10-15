@@ -1,0 +1,15 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+<meta charset="utf-8">
+<title>{% block titulo_doc %}Protocolo de mantenimiento {{ tipo.titulo }} N° {{ num_mant }}{% endblock %}</title>
+<style>
+{% include 'pdf/_estilos.css' %}
+</style>
+</head>
+<body>
+{% include 'pdf/_encabezado.html' %}
+{% block cuerpo %}{% endblock %}
+{% include 'pdf/_pie.html' %}
+</body>
+</html>

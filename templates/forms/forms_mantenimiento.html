@@ -1,8 +1,6 @@
 {% extends "layout/base.html" %}
 
-{% block title %}
-    Formulario
-{% endblock %}
+{% block title %}Generar reporte{% endblock %}
 
 {% block content %}
 <div class="container-mt4">
@@ -16,17 +14,17 @@
         </div>
 
         <div class="mb-4">
-            <label class="form-label">Selecciona el tipo de mantenimiento</label>
+            <label class="form-label" for="formSelector">Selecciona el tipo de mantenimiento</label>
             <select id="formSelector" class="form-select">
                 <option value="">-- Seleccione --</option>
-                <option value="reporte_general">Reporte general</option>
                 <option value="Protocolo_de_mantenimiento">Protocolo de mantenimiento</option>
+                <option value="reporte_general">Reporte general (próximamente)</option>
                 <option value="consulta_reporte">Consultar reporte</option>
             </select>
         </div>
         <div id="dynamicform"></div>
     </div>
 </div>
-
-<script src="{{ url_for('static', filename='js/forms.js') }}"></script>
 {% endblock %}
+
+{% block scripts %}<script src="{{ url_for('static', filename='js/forms.js') }}"></script>{% endblock %}
