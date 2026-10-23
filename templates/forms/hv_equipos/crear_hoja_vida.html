@@ -1,0 +1,300 @@
+{% extends "layout/base.html" %}
+
+{% block title %}Nueva hoja de vida{% endblock %}
+
+{% block content %}
+<div class="container-mt4">
+    <div class="card shadow-p4">
+        <div class="panel-head">
+            <div>
+                <span class="eyebrow">Formato PM_003 · Ingeniería Clínica</span>
+                <h2 class="mb-4">Nueva hoja de vida de equipo médico</h2>
+            </div>
+            <a class="btn btn-secondary" href="{{ url_for('hojas_vida_equipos') }}">Volver</a>
+        </div>
+
+        {% if not equipos %}
+        <div class="alert alert-info" role="status">
+            No hay equipos disponibles: todos los equipos del inventario ya tienen hoja de vida
+            (o el inventario está vacío).
+        </div>
+        {% endif %}
+        <div id="mensajeHojaVida" class="alert" role="status" hidden></div>
+
+        <!-- Los nombres de los campos son los nombres de las columnas de hojas_vida_equipos.
+             Los campos de solo lectura (sin name) vienen del inventario y no se envían. -->
+        <form id="hojaVidaForm" enctype="multipart/form-data" autocomplete="off" novalidate>
+
+            <!-- ========================= -->
+            <!-- DATOS GENERALES -->
+            <!-- ========================= -->
+            <h3 class="hv-titulo">Datos generales</h3>
+            <div class="hv-grid">
+                <div class="mb-3">
+                    <label class="form-label" for="hv-equipo">N° de serie</label>
+                    <select class="form-control" id="hv-equipo" name="id_inventario" required>
+                        <option value="">-- Seleccione --</option>
+                        {% for e in equipos %}
+                        <option value="{{ e.id }}"
+                                data-nombre="{{ e.equipo or '' }}"
+                                data-marca="{{ e.marca or '' }}"
+                                data-inventario="{{ e.inventario or '' }}"
+                                data-entidad="{{ e.entidad or '' }}"
+                                data-riesgo="{{ e.riesgo or '' }}"
+                                data-invima="{{ e.invima or '' }}">{{ e.serie }}</option>
+                        {% endfor %}
+                    </select>
+                </div>
+                <div class="mb-3">
+                    <label class="form-label" for="hv-inventario">N° de inventario</label>
+                    <input type="text" class="form-control" id="hv-inventario" readonly
+                           placeholder="Se llena al elegir la serie">
+                </div>
+                <div class="mb-3">
+                    <label class="form-label" for="hv-nombre">Nombre del equipo</label>
+                    <input type="text" class="form-control" id="hv-nombre" readonly>
+                </div>
+                <div class="mb-3">
+                    <label class="form-label" for="hv-marca">Marca</label>
+                    <input type="text" class="form-control" id="hv-marca" readonly>
+                </div>
+                <div class="mb-3">
+                    <label class="form-label" for="hv-modelo">Modelo</label>
+                    <input type="text" class="form-control" id="hv-modelo" name="modelo" maxlength="120">
+                </div>
+                <div class="mb-3">
+                    <label class="form-label" for="hv-invima">Registro INVIMA</label>
+                    <input type="text" class="form-control" id="hv-invima" name="registro_invima" maxlength="120">
+                </div>
+            </div>
+
+            <!-- ========================= -->
+            <!-- UBICACIÓN -->
+            <!-- ========================= -->
+            <h3 class="hv-titulo">Datos de ubicación</h3>
+            <div class="hv-grid hv-grid-3">
+                <div class="mb-3">
+                    <label class="form-label" for="hv-entidad">Entidad / Clínica</label>
+                    <input type="text" class="form-control" id="hv-entidad" readonly>
+                </div>
+                <div class="mb-3">
+                    <label class="form-label" for="hv-area">Área / Servicio</label>
+                    <input type="text" class="form-control" id="hv-area" name="area_servicio"
+                           list="dl-areas" maxlength="120">
+                </div>
+                <div class="mb-3">
+                    <label class="form-label" for="hv-cubiculo">Cubículo</label>
+                    <input type="text" class="form-control" id="hv-cubiculo" name="cubiculo" maxlength="60">
+                </div>
+            </div>
+
+            <!-- ========================= -->
+            <!-- IMAGEN -->
+            <!-- ========================= -->
+            <h3 class="hv-titulo">Imagen del equipo</h3>
+            <div class="mb-3">
+                <label class="form-label" for="hv-foto">Foto (JPG o PNG)</label>
+                <input type="file" class="form-control" id="hv-foto" name="foto" accept="image/jpeg,image/png">
+                <img id="hv-foto-vista" class="hv-foto-vista" alt="Vista previa de la foto" hidden>
+            </div>
+
+            <!-- ========================= -->
+            <!-- RESPONSABLE Y ADQUISICIÓN -->
+            <!-- ========================= -->
+            <h3 class="hv-titulo">Responsable del mantenimiento</h3>
+            <div class="hv-grid hv-grid-3">
+                <div class="mb-3">
+                    <label class="form-label" for="hv-responsable">Responsable</label>
+                    <select class="form-control" id="hv-responsable" name="id_responsable">
+                        <option value="">-- Seleccione --</option>
+                        {% for r in responsables %}
+                        <option value="{{ r.id }}" data-telefono="{{ r.telefono or '' }}"
+                                data-correo="{{ r.correo or '' }}">{{ r.nombre }}</option>
+                        {% endfor %}
+                    </select>
+                </div>
+                <div class="mb-3">
+                    <label class="form-label" for="hv-contacto">N° de contacto</label>
+                    <input type="text" class="form-control" id="hv-contacto" readonly>
+                </div>
+                <div class="mb-3">
+                    <label class="form-label" for="hv-email">Email</label>
+                    <input type="text" class="form-control" id="hv-email" readonly>
+                </div>
+            </div>
+
+            <h3 class="hv-titulo">Datos de adquisición</h3>
+            <div class="hv-grid hv-grid-3">
+                <div class="mb-3">
+                    <label class="form-label" for="hv-forma">Forma</label>
+                    <input type="text" class="form-control" id="hv-forma" name="forma_adquisicion"
+                           list="dl-forma" placeholder="Compra, donación…" maxlength="60">
+                </div>
+                <div class="mb-3">
+                    <label class="form-label" for="hv-fecha">Fecha</label>
+                    <input type="date" class="form-control" id="hv-fecha" name="fecha_adquisicion">
+                </div>
+                <div class="mb-3">
+                    <label class="form-label" for="hv-vida">Vida útil</label>
+                    <input type="text" class="form-control" id="hv-vida" name="vida_util"
+                           placeholder="Ej. 10 años" maxlength="60">
+                </div>
+            </div>
+
+            <!-- ========================= -->
+            <!-- 4R: MANTENIMIENTO -->
+            <!-- ========================= -->
+            <h3 class="hv-titulo">Mantenimiento (4R)</h3>
+            <div class="hv-grid">
+                <div class="mb-3">
+                    <label class="form-label" for="hv-periodicidad">Periodicidad del mantenimiento</label>
+                    <select class="form-control" id="hv-periodicidad" name="periodicidad">
+                        <option value="">-- Seleccione --</option>
+                        {% for p in ['Mensual', 'Bimestral', 'Trimestral', 'Cuatrimestral', 'Semestral', 'Anual'] %}
+                        <option value="{{ p }}">{{ p }}</option>
+                        {% endfor %}
+                    </select>
+                </div>
+                <div class="mb-3">
+                    <label class="form-label" for="hv-metrologia">Requiere control metrológico</label>
+                    <select class="form-control" id="hv-metrologia" name="control_metrologico">
+                        <option value="">-- Seleccione --</option>
+                        <option value="si">Sí</option>
+                        <option value="no">No</option>
+                    </select>
+                </div>
+            </div>
+            <fieldset class="mb-3 hv-meses">
+                <legend class="form-label">Meses de mantenimiento</legend>
+                {% for mes in ['Ene', 'Feb', 'Mar', 'Abr', 'May', 'Jun', 'Jul', 'Ago', 'Sep', 'Oct', 'Nov', 'Dic'] %}
+                <label class="hv-mes">
+                    <input type="checkbox" name="meses_mantenimiento" value="{{ loop.index }}">
+                    <span>{{ mes }}.</span>
+                </label>
+                {% endfor %}
+            </fieldset>
+
+            <!-- ========================= -->
+            <!-- ESPECIFICACIONES TÉCNICAS -->
+            <!-- ========================= -->
+            <h3 class="hv-titulo">Especificaciones técnicas</h3>
+            <div class="hv-grid hv-grid-3">
+                {% for clave, etiqueta, maximo in [
+                    ('voltaje', 'Voltaje (V)', 60), ('corriente', 'Corriente (A)', 60), ('frecuencia', 'Frecuencia (Hz)', 60),
+                    ('potencia', 'Potencia (W)', 60), ('peso', 'Peso (Kg)', 60), ('presion', 'Presión', 60),
+                    ('temperatura', 'Temperatura (°C)', 60), ('dimensiones', 'Dimensiones', 120), ('capacidad', 'Capacidad', 120)] %}
+                <div class="mb-3">
+                    <label class="form-label" for="hv-{{ clave }}">{{ etiqueta }}</label>
+                    <input type="text" class="form-control" id="hv-{{ clave }}" name="{{ clave }}" maxlength="{{ maximo }}">
+                </div>
+                {% endfor %}
+            </div>
+
+            <!-- ========================= -->
+            <!-- CLASIFICACIÓN -->
+            <!-- ========================= -->
+            <h3 class="hv-titulo">Clasificación</h3>
+            <div class="hv-grid">
+                <div class="mb-3">
+                    <label class="form-label" for="hv-clas-bio">Clasificación biomédica</label>
+                    <input type="text" class="form-control" id="hv-clas-bio" name="clasificacion_biomedica"
+                           list="dl-bio" maxlength="80">
+                </div>
+                <div class="mb-3">
+                    <label class="form-label" for="hv-riesgo">Clasificación del riesgo</label>
+                    <input type="text" class="form-control" id="hv-riesgo" readonly
+                           placeholder="Viene del inventario">
+                </div>
+                <div class="mb-3">
+                    <label class="form-label" for="hv-fuente">Fuente de alimentación</label>
+                    <input type="text" class="form-control" id="hv-fuente" name="fuente_alimentacion"
+                           list="dl-fuente" maxlength="60">
+                </div>
+                <div class="mb-3">
+                    <label class="form-label" for="hv-tecnologia">Tecnología predominante</label>
+                    <input type="text" class="form-control" id="hv-tecnologia" name="tecnologia_predominante"
+                           list="dl-tec" maxlength="60">
+                </div>
+            </div>
+
+            <!-- ========================= -->
+            <!-- ACCESORIOS / CONSUMIBLES -->
+            <!-- ========================= -->
+            <h3 class="hv-titulo">Accesorios / consumibles</h3>
+            <div class="table-responsive mb-3">
+                <table class="hv-accesorios">
+                    <thead>
+                        <tr><th>Cant.</th><th>Descripción</th><th>Marca</th><th>Modelo</th></tr>
+                    </thead>
+                    <tbody>
+                        {% for n in range(1, 9) %}
+                        <tr>
+                            <td><input type="number" class="form-control" min="0" step="1" name="acc_cantidad_{{ n }}"
+                                       aria-label="Cantidad del accesorio {{ n }}"></td>
+                            <td><input type="text" class="form-control" name="acc_descripcion_{{ n }}" maxlength="255"
+                                       aria-label="Descripción del accesorio {{ n }}"></td>
+                            <td><select class="form-control" name="acc_marca_{{ n }}"
+                                        aria-label="Marca del accesorio {{ n }}">
+                                    <option value=""></option>
+                                    {% for marca in brand %}
+                                    <option value="{{ marca[0] }}">{{ marca[1] }}</option>
+                                    {% endfor %}
+                                </select></td>
+                            <td><input type="text" class="form-control" name="acc_modelo_{{ n }}" maxlength="120"
+                                       aria-label="Modelo del accesorio {{ n }}"></td>
+                        </tr>
+                        {% endfor %}
+                    </tbody>
+                </table>
+            </div>
+
+            <!-- ========================= -->
+            <!-- DOCUMENTACIÓN -->
+            <!-- ========================= -->
+            <h3 class="hv-titulo">Documentación</h3>
+            <div class="hv-grid">
+                {% for clave, etiqueta in [
+                    ('manual_operacion', 'Manual de operación'), ('manual_servicio', 'Manual de servicio'),
+                    ('ficha_tecnica', 'Ficha técnica'), ('guia_rapida', 'Guía rápida de operación')] %}
+                <div class="mb-3">
+                    <label class="form-label" for="hv-{{ clave }}">{{ etiqueta }}</label>
+                    <select class="form-control" id="hv-{{ clave }}" name="{{ clave }}">
+                        <option value="">-- Seleccione --</option>
+                        <option value="si">Sí</option>
+                        <option value="no">No</option>
+                    </select>
+                </div>
+                {% endfor %}
+            </div>
+
+            <!-- ========================= -->
+            <!-- BOTONES -->
+            <!-- ========================= -->
+            <div class="mt-4 hv-acciones">
+                <button class="btn btn-primary" id="guardarHojaVida" type="submit"
+                        {{ 'disabled' if not equipos }}>Guardar hoja de vida</button>
+                <a class="btn btn-secondary" href="{{ url_for('hojas_vida_equipos') }}">Cancelar</a>
+            </div>
+        </form>
+    </div>
+</div>
+
+<!-- Sugerencias para los campos de texto (se puede escribir otro valor) -->
+<datalist id="dl-areas">
+    {% for a in ['UCI', 'UCI intermedios', 'Urgencias', 'Cirugía', 'Hospitalización', 'Obstetricia', 'Pediatría'] %}<option value="{{ a }}">{% endfor %}
+</datalist>
+<datalist id="dl-forma">
+    {% for f in ['Compra', 'Donación', 'Comodato', 'Arrendamiento', 'Leasing'] %}<option value="{{ f }}">{% endfor %}
+</datalist>
+<datalist id="dl-bio">
+    {% for b in ['Diagnóstico', 'Tratamiento y mantenimiento de la vida', 'Rehabilitación', 'Prevención', 'Análisis de laboratorio'] %}<option value="{{ b }}">{% endfor %}
+</datalist>
+<datalist id="dl-fuente">
+    {% for f in ['Eléctrica', 'Batería', 'Eléctrica / Batería', 'Neumática', 'Hidráulica', 'Mecánica', 'Solar'] %}<option value="{{ f }}">{% endfor %}
+</datalist>
+<datalist id="dl-tec">
+    {% for t in ['Eléctrico', 'Electrónico', 'Mecánico', 'Electromecánico', 'Neumático', 'Hidráulico'] %}<option value="{{ t }}">{% endfor %}
+</datalist>
+{% endblock %}
+
+{% block scripts %}<script src="{{ url_for('static', filename='js/hoja_vida.js') }}"></script>{% endblock %}

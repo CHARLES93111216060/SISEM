@@ -1,13 +1,11 @@
 <table class="enc">
+  <colgroup><col style="width:21.4%"><col style="width:58.6%"><col style="width:10%"><col style="width:10%"></colgroup>
   <tr>
-    <td class="enc-logo" style="width:22%"><img src="{{ asset('images/pdf_logo.png') }}" alt="Biomega Ingeniería y Mantenimiento"></td>
-    <td class="enc-titulo" style="width:55%">PROTOCOLO DE MANTENIMIENTO<br>{{ tipo.titulo }}</td>
-    <td class="enc-proc" style="width:23%">
-      <table class="sb">
-        <tr><td colspan="2"><strong>Proceso:</strong><br>Ingeniería clínica</td></tr>
-        <tr><td><strong>Código:</strong></td><td><strong>Versión:</strong></td></tr>
-        <tr><td>{{ tipo.codigo or '—' }}</td><td>{{ tipo.version or '—' }}</td></tr>
-      </table>
-    </td>
+    <td class="enc-logo" rowspan="4"><img src="{{ asset('images/pdf_logo.png') }}" alt="Biomega Ingeniería y Mantenimiento"></td>
+    <td class="enc-titulo" rowspan="3">PROTOCOLO DE MANTENIMIENTO<br>{{ tipo.titulo }}</td>
+    <td colspan="2"><strong>Proceso:</strong></td>
   </tr>
+  <tr><td colspan="2">Ingeniería clínica.</td></tr>
+  <tr><td><strong>Código:</strong></td><td><strong>Versión:</strong></td></tr>
+  <tr><td class="enc-empresa">BIOMEGA S.A.S.</td><td>{{ tipo.codigo or '—' }}</td><td>{{ tipo.version or '—' }}</td></tr>
 </table>

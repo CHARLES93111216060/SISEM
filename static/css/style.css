@@ -834,6 +834,118 @@ tbody tr:hover{
     color:#7f1d1d;
 }
 
+/* Formulario de hoja de vida */
+.hv-titulo{
+    margin:1.6rem 0 1rem;
+    padding-bottom:6px;
+    border-bottom:2px solid #66a6be;
+    color:#1f4e79;
+    font-size:1.15rem;
+}
+
+.hv-grid{
+    display:grid;
+    grid-template-columns:repeat(2, minmax(0, 1fr));
+    column-gap:18px;
+}
+
+.hv-grid-3{
+    grid-template-columns:repeat(3, minmax(0, 1fr));
+}
+
+.hv-meses{
+    display:grid;
+    grid-template-columns:repeat(12, minmax(0, 1fr));
+    gap:8px;
+    border:0;
+    padding:0;
+    margin-left:0;
+    margin-right:0;
+}
+
+.hv-meses legend{
+    grid-column:1 / -1;
+}
+
+.hv-mes{
+    display:flex;
+    flex-direction:column;
+    align-items:center;
+    gap:4px;
+    padding:8px 4px;
+    border:1px solid #c8d2de;
+    border-radius:10px;
+    background:#f8fafc;
+    font-size:0.9rem;
+    cursor:pointer;
+}
+
+.hv-mes:has(input:checked){
+    background:#dcecf2;
+    border-color:#3e88a0;
+}
+
+.hv-accesorios td{
+    padding:6px;
+}
+
+.hv-accesorios .form-control{
+    padding:8px 10px;
+}
+
+.hv-accesorios th:first-child{
+    width:90px;
+}
+
+/* Datos que vienen del inventario / personal (no se editan aquí) */
+#hojaVidaForm .form-control[readonly]{
+    background:#eef3f7;
+    color:#425466;
+    cursor:default;
+}
+
+.hv-foto-vista{
+    display:block;
+    max-width:260px;
+    max-height:200px;
+    margin-top:10px;
+    border:1px solid #c8d2de;
+    border-radius:10px;
+    object-fit:contain;
+}
+
+.hv-foto-vista[hidden]{
+    display:none;
+}
+
+.hv-busqueda{
+    display:flex;
+    flex-wrap:wrap;
+    gap:10px;
+    margin-bottom:18px;
+}
+
+.hv-busqueda .form-control{
+    flex:1 1 260px;
+}
+
+.hv-acciones{
+    display:flex;
+    flex-wrap:wrap;
+    gap:12px;
+}
+
+@media (max-width: 900px) {
+    .hv-grid,
+    .hv-grid-3{
+        grid-template-columns:minmax(0, 1fr);
+    }
+
+    .hv-meses{
+        grid-template-columns:repeat(6, minmax(0, 1fr));
+    }
+}
+
 /* Tablas de historial y clientes */
 td.acciones{
     text-align:right;

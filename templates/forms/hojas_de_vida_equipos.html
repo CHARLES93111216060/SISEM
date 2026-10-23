@@ -1,0 +1,18 @@
+{%extends "layout/base.html"%}
+{% block title %}Hojas de vida de los equipos{% endblock %}
+{% block content %}
+
+<div class="dashboard-shell">
+    <section class="page-hero">
+        <div>
+            <span class="eyebrow">Módulo de mantenimiento</span>
+            <h2>Hojas de vida de los equipos</h2>
+            <p>Consulta y gestiona las hojas de vida de los equipos registrados.</p>
+        </div>
+        <div class="hero-actions">
+            <a class="btn btn-primary" href="{{ url_for('crear_hv') }}">Nueva hoja de vida</a>
+            <a class="btn btn-primary" href="{{ url_for('consultar_hv') }}">Consultar hojas de vida</a>
+        </div>
+    </section>
+</div>
+{% endblock %}

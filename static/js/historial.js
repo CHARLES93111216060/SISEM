@@ -1,4 +1,4 @@
-// Historial: vuelve a descargar el PDF de un reporte guardado.
+// Historial de reportes y consulta de hojas de vida: vuelve a descargar el PDF guardado.
 (function () {
     'use strict';
     const aviso = document.getElementById('mensajeHistorial');
@@ -17,7 +17,8 @@
             boton.textContent = 'Generando…';
             mostrar('', 'info');
             try {
-                await window.SISEM.descargarPDF(boton.dataset.url, `reporte_${boton.dataset.id}.pdf`);
+                await window.SISEM.descargarPDF(
+                    boton.dataset.url, boton.dataset.nombre || `reporte_${boton.dataset.id}.pdf`);
             } catch (error) {
                 mostrar(error.message, 'error');
             } finally {

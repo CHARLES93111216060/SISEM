@@ -12,11 +12,12 @@ from datetime import date, datetime, timedelta
 from functools import wraps
 
 from dotenv import load_dotenv
+from PIL import Image, ImageOps
 
 load_dotenv()
 
 from flask import (Flask, abort, jsonify, redirect, render_template, request,  # noqa: E402
-                   send_file, session, url_for)
+                send_file, session, url_for)
 from werkzeug.exceptions import HTTPException  # noqa: E402
 from werkzeug.middleware.proxy_fix import ProxyFix  # noqa: E402
 from werkzeug.security import check_password_hash, generate_password_hash  # noqa: E402
@@ -454,9 +455,203 @@ def historial():
 
     paginas = max(1, -(-total // POR_PAGINA))
     return render_template('historial.html', reportes=reportes, pagina=pagina,
-                           paginas=paginas, total=total)
+                        paginas=paginas, total=total)
+
+# ----------------------------------------------------------------------------------------
+# Módulo de hojas de vida de equipos
+# ----------------------------------------------------------------------------------------
+@sisem.route('/mantenimiento/hojas_vida_equipos')
+@login_required
+def hojas_vida_equipos():
+    return render_template('forms/hojas_de_vida_equipos.html')
+
+@sisem.route('/crear_hv')
+@login_required
+def crear_hv():
+    return render_template(
+        'forms/hv_equipos/crear_hoja_vida.html',
+        equipos=db.inventario_sin_hoja_vida() or [],
+        responsables=db.responsables() or [],
+        brand=db.marcas() or [],
+    )
+
+
+# Columnas de texto de hojas_vida_equipos -> longitud máxima (igual que en la tabla).
+# El nombre del campo del formulario es el mismo nombre de la columna.
+_HV_TEXTO = {
+    'modelo': 120, 'registro_invima': 120, 'area_servicio': 120, 'cubiculo': 60,
+    'forma_adquisicion': 60, 'vida_util': 60,
+    'voltaje': 60, 'corriente': 60, 'frecuencia': 60, 'potencia': 60, 'peso': 60,
+    'presion': 60, 'temperatura': 60, 'dimensiones': 120, 'capacidad': 120,
+    'clasificacion_biomedica': 80, 'fuente_alimentacion': 60, 'tecnologia_predominante': 60,
+}
+# Columnas con valores fijos (los mismos CHECK de la tabla)
+_SI_NO = frozenset({'si', 'no'})
+_HV_OPCIONES = {
+    'periodicidad': frozenset({'Mensual', 'Bimestral', 'Trimestral', 'Cuatrimestral', 'Semestral', 'Anual'}),
+    'control_metrologico': _SI_NO,
+    'manual_operacion': _SI_NO, 'manual_servicio': _SI_NO, 'ficha_tecnica': _SI_NO, 'guia_rapida': _SI_NO,
+}
+_HV_FILAS_ACCESORIOS = 8
+_FOTO_LADO_MAX = 1200        # px; la foto se reduce y se guarda como JPEG
+
+
+def _procesar_foto(archivo):
+    """Valida que sea JPG/PNG real y la vuelve a codificar como JPEG.
+
+    Reescribir la imagen elimina metadatos (EXIF con GPS, etc.) y cualquier contenido que
+    no sea imagen. Devuelve ``(bytes, 'image/jpeg')``; lanza ValueError si no es válida.
+    """
+    try:
+        imagen = Image.open(archivo.stream)
+        if imagen.format not in ('JPEG', 'PNG'):
+            raise ValueError
+        imagen.load()
+        imagen = ImageOps.exif_transpose(imagen)       # respeta la orientación de la cámara
+    except (ValueError, OSError, Image.DecompressionBombError):
+        raise ValueError("La foto debe ser una imagen JPG o PNG válida.")
+
+    if imagen.mode != 'RGB':                           # transparencias sobre fondo blanco
+        imagen = imagen.convert('RGBA')
+        fondo = Image.new('RGB', imagen.size, 'white')
+        fondo.paste(imagen, mask=imagen.getchannel('A'))
+        imagen = fondo
+    imagen.thumbnail((_FOTO_LADO_MAX, _FOTO_LADO_MAX))
+    salida = io.BytesIO()
+    imagen.save(salida, 'JPEG', quality=85, optimize=True)
+    return salida.getvalue(), 'image/jpeg'
+
+
+def _validar_hoja_vida(form, foto):
+    """Devuelve ``(columnas, accesorios, equipo, error)`` listos para db.guardar_hoja_vida.
+
+    Solo se aceptan las columnas de la lista fija; los ids se comprueban contra la base.
+    """
+    def texto(campo, maximo):
+        valor = (form.get(campo) or '').replace('\x00', '').strip()
+        if len(valor) > maximo:
+            raise ValueError(f"El campo «{campo}» admite máximo {maximo} caracteres.")
+        return valor or None
+
+    def id_valido(campo, validos, nombre):
+        valor = (form.get(campo) or '').strip()
+        if not valor:
+            return None
+        if not valor.isdigit() or int(valor) not in validos:
+            raise ValueError(f"{nombre} no válido.")
+        return int(valor)
+
+    try:
+        equipos = {e['id']: e for e in db.inventario_sin_hoja_vida()}
+        id_inventario = id_valido('id_inventario', equipos, 'Equipo')
+        if id_inventario is None:
+            raise ValueError("Selecciona el equipo (N° de serie).")
+
+        datos = {
+            'id_inventario': id_inventario,
+            'id_responsable': id_valido('id_responsable', {r['id'] for r in db.responsables()},
+                                        'Responsable'),
+        }
+        for campo, maximo in _HV_TEXTO.items():
+            datos[campo] = texto(campo, maximo)
+        for campo, opciones in _HV_OPCIONES.items():
+            datos[campo] = texto(campo, 20)
+            if datos[campo] is not None and datos[campo] not in opciones:
+                raise ValueError(f"Valor no permitido en «{campo}».")
+
+        fecha = texto('fecha_adquisicion', 10)
+        if fecha:
+            try:
+                if not _FECHA.match(fecha):
+                    raise ValueError
+                datetime.strptime(fecha, '%Y-%m-%d')
+            except ValueError:
+                raise ValueError("La fecha de adquisición no es válida.")
+        datos['fecha_adquisicion'] = fecha
+
+        meses = form.getlist('meses_mantenimiento')
+        if len(meses) > 12 or not all(m.isdigit() and 1 <= int(m) <= 12 for m in meses):
+            raise ValueError("Los meses de mantenimiento no son válidos.")
+        datos['meses_mantenimiento'] = sorted({int(m) for m in meses})
+
+        marcas = {m[0] for m in db.marcas() or []}
+        accesorios = []
+        for n in range(1, _HV_FILAS_ACCESORIOS + 1):
+            cantidad = texto(f'acc_cantidad_{n}', 6)
+            fila = {
+                'fila': n,
+                'descripcion': texto(f'acc_descripcion_{n}', 255),
+                'id_marca': id_valido(f'acc_marca_{n}', marcas, f'Marca del accesorio {n}'),
+                'modelo': texto(f'acc_modelo_{n}', 120),
+            }
+            if cantidad is not None and not cantidad.isdigit():
+                raise ValueError(f"La cantidad del accesorio {n} debe ser un número entero.")
+            fila['cantidad'] = int(cantidad) if cantidad else None
+            if any(fila[k] is not None for k in ('cantidad', 'descripcion', 'id_marca', 'modelo')):
+                accesorios.append(fila)
+
+        if foto and foto.filename:
+            datos['foto'], datos['foto_mime'] = _procesar_foto(foto)
+            datos['foto_nombre'] = os.path.basename(foto.filename.replace('\\', '/'))[:255] or None
+    except ValueError as error:
+        return None, None, None, str(error)
+
+    return datos, accesorios, equipos[id_inventario], None
+
+
+@sisem.route('/mantenimiento/hojas_vida_equipos/guardar', methods=['POST'])
+@login_required
+def guardar_hoja_vida():
+    datos, accesorios, equipo, problema = _validar_hoja_vida(request.form, request.files.get('foto'))
+    if problema:
+        return jsonify({"error": problema}), 400
+
+    try:
+        hoja_id = db.guardar_hoja_vida(datos, accesorios)
+    except db.HojaVidaDuplicada:
+        return jsonify({"error": "Este equipo ya tiene una hoja de vida registrada."}), 409
+    except Exception:
+        logger.exception("No se pudo guardar la hoja de vida")
+        return jsonify({"error": "No se pudo guardar la hoja de vida. Inténtalo de nuevo."}), 500
+
+    return jsonify({
+        "mensaje": "Hoja de vida guardada correctamente",
+        "id": hoja_id,
+        "archivo": informes.nombre_archivo_hoja_vida(equipo['inventario'], hoja_id),
+    }), 201
+
+
+@sisem.route('/mantenimiento/hojas_vida_equipos/<int:hoja_id>/descargar')
+@login_required
+def descargar_hoja_vida(hoja_id):
+    try:
+        pdf, nombre = informes.generar_hoja_vida_pdf(hoja_id)
+    except informes.ReporteNoEncontrado:
+        abort(404)
+    except Exception:
+        logger.exception("Error generando el PDF de la hoja de vida %s", hoja_id)
+        return _error(500, "No se pudo generar el PDF. Inténtalo de nuevo más tarde.")
+
+    return send_file(io.BytesIO(pdf), mimetype='application/pdf', as_attachment=True,
+                    download_name=nombre)
+
+
+@sisem.route('/consultar_hv')
+@login_required
+def consultar_hv():
+    texto = request.args.get('q', '').replace('\x00', '').strip()[:120]
+    pagina = max(1, request.args.get('pagina', 1, type=int))
+    total = db.contar_hojas_vida(texto) or 0
+    filas = db.buscar_hojas_vida(texto, POR_PAGINA, (pagina - 1) * POR_PAGINA) if total else []
+
+    hojas = [dict(f, creada=informes.fecha_legible(f['fecha_creacion']),
+                  archivo=informes.nombre_archivo_hoja_vida(f['numero_inventario'], f['id']))
+             for f in filas]
+    paginas = max(1, -(-total // POR_PAGINA))
+    return render_template('forms/hv_equipos/consultar_hoja_vida.html', hojas=hojas, q=texto,
+                           total=total, pagina=pagina, paginas=paginas)
 
 
 if __name__ == '__main__':
     sisem.run(debug=DEBUG, host=os.getenv('FLASK_HOST', '127.0.0.1'),
-              port=int(os.getenv('FLASK_PORT', '5000')))
+        port=int(os.getenv('FLASK_PORT', '5000')))

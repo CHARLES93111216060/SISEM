@@ -30,6 +30,7 @@ REPORTES = {}
 
 def reiniciar():
     REPORTES.clear()
+    HOJAS.clear()
 
 
 def guardar(reporte_id, equipo, datos, tecnico=1, cliente=7, fecha='2026-10-14'):
@@ -55,6 +56,71 @@ def _subir(tecnico, cliente, equipo, fecha, reporte):
 
 
 fake.subir_reporte = _subir
+
+# --- hojas de vida ---------------------------------------------------------------------------
+INVENTARIO = [
+    {'id': 4, 'serie': 'SN-77', 'inventario': 'MED_0077', 'equipo': 'Concentrador de O2',
+     'marca': 'B. Braun', 'entidad': 'Clínica <Norte> & Cía', 'riesgo': 'IIA', 'invima': 'INV-2020'},
+    {'id': 9, 'serie': 'SN-99', 'inventario': 'MED/0099', 'equipo': 'Monitor',
+     'marca': None, 'entidad': 'Otro', 'riesgo': '', 'invima': None},
+]
+HOJAS = {}
+
+
+class HojaVidaDuplicada(Exception):
+    pass
+
+
+def _guardar_hoja(datos, accesorios):
+    if any(h['datos']['id_inventario'] == datos['id_inventario'] for h in HOJAS.values()):
+        raise HojaVidaDuplicada()
+    nuevo = max(HOJAS, default=0) + 1
+    HOJAS[nuevo] = {'datos': datos, 'accesorios': accesorios}
+    return nuevo
+
+
+def _obtener_hoja(hoja_id):
+    """Imita la vista v_hojas_vida (une inventario, marca, cliente y responsable)."""
+    guardada = HOJAS.get(hoja_id)
+    if not guardada:
+        return None
+    datos = guardada['datos']
+    equipo = next(e for e in INVENTARIO if e['id'] == datos['id_inventario'])
+    persona = {1: ('Juan Pérez', '3001234567', 'juan@ejemplo.com')}.get(datos.get('id_responsable'), (None,) * 3)
+    marcas = dict(fake.marcas())
+    hoja = dict(datos, id_hoja_vida=hoja_id, nombre_equipo=equipo['equipo'], marca=equipo['marca'],
+                serie=equipo['serie'], numero_inventario=equipo['inventario'], entidad=equipo['entidad'],
+                clasificacion_riesgo=equipo['riesgo'], responsable=persona[0],
+                responsable_contacto=persona[1], responsable_email=persona[2])
+    hoja['accesorios'] = [dict(a, marca=marcas.get(a['id_marca'])) for a in guardada['accesorios']]
+    return hoja
+
+
+fake.HojaVidaDuplicada = HojaVidaDuplicada
+fake.inventario_sin_hoja_vida = lambda: [
+    e for e in INVENTARIO if all(h['datos']['id_inventario'] != e['id'] for h in HOJAS.values())]
+fake.responsables = lambda: [{'id': 1, 'nombre': 'Juan Pérez', 'telefono': '3001234567', 'correo': 'juan@ejemplo.com'},
+                             {'id': 2, 'nombre': 'Ana Gómez', 'telefono': None, 'correo': 'ana@ejemplo.com'}]
+fake.guardar_hoja_vida = _guardar_hoja
+fake.obtener_hoja_vida = _obtener_hoja
+
+
+def _buscar_hojas(texto=''):
+    filas = []
+    for hoja_id in sorted(HOJAS, reverse=True):
+        h = _obtener_hoja(hoja_id)
+        campos = (h['serie'], h['numero_inventario'], h['nombre_equipo'], h['entidad'], h['marca'])
+        if not texto or any(texto.lower() in (c or '').lower() for c in campos):
+            filas.append({'id': hoja_id, 'nombre_equipo': h['nombre_equipo'], 'marca': h['marca'],
+                          'modelo': h.get('modelo'), 'serie': h['serie'], 'numero_inventario': h['numero_inventario'],
+                          'entidad': h['entidad'], 'area_servicio': h.get('area_servicio'),
+                          'fecha_creacion': '2026-10-23 09:15:00'})
+    return filas
+
+
+fake.buscar_hojas_vida = lambda texto='', limite=20, desplazamiento=0: \
+    _buscar_hojas(texto)[desplazamiento:desplazamiento + limite]
+fake.contar_hojas_vida = lambda texto='': len(_buscar_hojas(texto))
 
 import database  # noqa: E402  (paquete de espacio de nombres del proyecto)
 sys.modules['database.db'] = fake

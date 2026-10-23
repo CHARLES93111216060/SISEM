@@ -26,7 +26,7 @@ class FalsaConexion:
 
     def __enter__(self): return self
     def __exit__(self, tipo, *a): self.registro.append(('FIN', 'rollback' if tipo else 'commit')); return False
-    def cursor(self): return FalsoCursor(self.registro, self.filas)
+    def cursor(self, row_factory=None): return FalsoCursor(self.registro, self.filas)
 
 
 class FalsoPool:

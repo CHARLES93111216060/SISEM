@@ -1,0 +1,261 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+<meta charset="utf-8">
+<title>Hoja de vida {{ hv.nombre_equipo }} · {{ hv.numero_inventario }}</title>
+<style>
+@font-face { font-family: 'Jost'; font-weight: 400; src: url('{{ asset("fonts/Jost-Regular.ttf") }}'); }
+@font-face { font-family: 'Jost'; font-weight: 500; src: url('{{ asset("fonts/Jost-Medium.ttf") }}'); }
+@font-face { font-family: 'Jost'; font-weight: 700; src: url('{{ asset("fonts/Jost-Bold.ttf") }}'); }
+
+@page { size: Letter; margin: 0.9cm 1.1cm; }
+
+* { box-sizing: border-box; }
+body {
+  font-family: 'Jost', 'Liberation Sans', Arial, sans-serif;
+  font-size: 7.8pt;
+  line-height: 1.25;
+  color: #1d2328;
+  margin: 0;
+}
+
+table { border-collapse: collapse; width: 100%; table-layout: fixed; }
+td, th {
+  border: 0.75pt solid #7f8f99;
+  padding: 1.5pt 4pt;
+  height: 13.5pt;
+  vertical-align: middle;
+  font-weight: normal;
+  overflow-wrap: anywhere;
+}
+th { font-weight: 700; text-align: center; }
+.c { text-align: center; }
+.lbl { font-weight: 700; text-align: right; }
+.lbl-n { text-align: right; }
+.gap { height: 5pt; }
+
+/* Franja de título de cada sección */
+.band {
+  background: #66A6BE;
+  color: #fff;
+  font-weight: 700;
+  text-align: center;
+  padding: 2.5pt 0;
+  border: 0.75pt solid #66A6BE;
+}
+
+/* Encabezado */
+.hd td { text-align: center; }
+.hd .logo { padding: 4pt; }
+.hd .logo img { width: 100%; }
+.hd .titulo { font-size: 14pt; }
+.hd .empresa { font-weight: 700; font-style: italic; }
+
+/* Dos columnas */
+table.cols > tbody > tr > td { border: 0; padding: 0; height: auto; vertical-align: top; }
+.col { width: 49%; }
+.col-gap { width: 2%; }
+
+/* Foto del equipo */
+.foto { height: 5.6cm; text-align: center; vertical-align: middle; padding: 4pt; }
+.foto img { max-width: 100%; max-height: 5.2cm; }
+.foto .vacia { color: #8aa3ae; }
+
+/* Meses de mantenimiento */
+.meses th { font-size: 7pt; }
+.meses td { text-align: center; font-weight: 700; }
+
+.pie td { text-align: center; }
+
+.no-corte { page-break-inside: avoid; break-inside: avoid; }
+</style>
+</head>
+<body>
+
+<!-- ===================== ENCABEZADO ===================== -->
+<table class="hd">
+  <colgroup><col style="width:21.4%"><col style="width:58.6%"><col style="width:10%"><col style="width:10%"></colgroup>
+  <tr>
+    <td class="logo" rowspan="4"><img src="{{ asset('images/pdf_logo.png') }}" alt="BIOMEGA"></td>
+    <td class="titulo" rowspan="3">HOJA DE VIDA DE EQUIPO MÉDICO</td>
+    <td colspan="2"><b>Proceso:</b></td>
+  </tr>
+  <tr><td colspan="2">Ingeniería Clínica.</td></tr>
+  <tr><td><b>Código:</b></td><td><b>Versión: 1</b></td></tr>
+  <tr><td class="empresa">BIOMEGA S.A.S.</td><td>PM_003</td><td>Pág. N° 1</td></tr>
+</table>
+<div class="gap"></div>
+
+<!-- ===================== DATOS GENERALES / UBICACIÓN / IMAGEN ===================== -->
+<table class="cols">
+  <tr>
+    <td class="col">
+      <div class="band">Datos Generales.</div>
+      <table>
+        <colgroup><col style="width:34%"><col></colgroup>
+        <tr><td class="lbl">Nombre:</td><td class="c">{{ hv.nombre_equipo }}</td></tr>
+        <tr><td class="lbl">Marca:</td><td class="c">{{ hv.marca }}</td></tr>
+        <tr><td class="lbl">Modelo:</td><td class="c">{{ hv.modelo }}</td></tr>
+        <tr><td class="lbl">N° de Serie:</td><td class="c">{{ hv.serie }}</td></tr>
+        <tr><td class="lbl">N° de Inventario:</td><td class="c"><b>{{ hv.numero_inventario }}</b></td></tr>
+        <tr><td class="lbl">Registro INVIMA:</td><td class="c">{{ hv.registro_invima }}</td></tr>
+      </table>
+      <div class="gap"></div>
+      <div class="band">Datos de Ubicación.</div>
+      <table>
+        <colgroup><col style="width:34%"><col></colgroup>
+        <tr><td class="lbl">Entidad / Clínica:</td><td class="c">{{ hv.entidad }}</td></tr>
+        <tr><td class="lbl">Área / Servicio:</td><td class="c">{{ hv.area_servicio }}</td></tr>
+        <tr><td class="lbl">Cubículo:</td><td class="c">{{ hv.cubiculo }}</td></tr>
+      </table>
+    </td>
+    <td class="col-gap"></td>
+    <td class="col">
+      <div class="band">Imagen del Equipo.</div>
+      <table>
+        <tr><td class="foto">
+          {% if foto %}<img src="{{ foto }}" alt="Foto del equipo">{% else %}<span class="vacia">Sin foto</span>{% endif %}
+        </td></tr>
+      </table>
+    </td>
+  </tr>
+</table>
+<div class="gap"></div>
+
+<!-- ===================== RESPONSABLE / ADQUISICIÓN ===================== -->
+<table class="cols">
+  <tr>
+    <td class="col">
+      <div class="band">Responsable del Mantenimiento.</div>
+      <table>
+        <colgroup><col style="width:34%"><col></colgroup>
+        <tr><td class="lbl">Responsable:</td><td class="c">{{ hv.responsable }}</td></tr>
+        <tr><td class="lbl">N° de Contacto:</td><td class="c">{{ hv.responsable_contacto }}</td></tr>
+        <tr><td class="lbl">Email:</td><td class="c">{{ hv.responsable_email }}</td></tr>
+      </table>
+    </td>
+    <td class="col-gap"></td>
+    <td class="col">
+      <div class="band">Datos de Adquisición</div>
+      <table>
+        <colgroup><col style="width:34%"><col></colgroup>
+        <tr><td class="lbl">Forma:</td><td class="c">{{ hv.forma_adquisicion }}</td></tr>
+        <tr><td class="lbl">Fecha:</td><td class="c">{{ fecha_adquisicion }}</td></tr>
+        <tr><td class="lbl">Vida Útil:</td><td class="c">{{ hv.vida_util }}</td></tr>
+      </table>
+    </td>
+  </tr>
+</table>
+<div class="gap"></div>
+
+<!-- ===================== 4R: MANTENIMIENTO ===================== -->
+<div class="no-corte">
+  <div class="band">4R</div>
+  <table>
+    <colgroup><col style="width:25%"><col style="width:27.5%"><col style="width:25%"><col></colgroup>
+    <tr>
+      <td class="lbl">Periodicidad del Mantenimiento:</td><td class="c">{{ hv.periodicidad }}</td>
+      <td class="lbl">Requiere Control Metrológico:</td><td class="c">{{ si_no(hv.control_metrologico) }}</td>
+    </tr>
+  </table>
+  <table class="meses">
+    <colgroup><col style="width:17.2%"><col span="12"></colgroup>
+    <tr>
+      <td class="lbl" rowspan="2">Meses de<br>mantenimiento</td>
+      {% for nombre, _ in meses %}<th>{{ nombre }}</th>{% endfor %}
+    </tr>
+    <tr>{% for _, marcado in meses %}<td>{{ 'X' if marcado }}</td>{% endfor %}</tr>
+  </table>
+</div>
+<div class="gap"></div>
+
+<!-- ===================== ESPECIFICACIONES TÉCNICAS ===================== -->
+<div class="no-corte">
+  <div class="band">Especificaciones Técnicas.</div>
+  <table>
+    <colgroup>{% for _ in range(3) %}<col style="width:15%"><col style="width:18.3%">{% endfor %}</colgroup>
+    <tr>
+      <td class="lbl-n">Voltaje (V)</td><td class="c">{{ hv.voltaje }}</td>
+      <td class="lbl-n">Corriente (A)</td><td class="c">{{ hv.corriente }}</td>
+      <td class="lbl-n">Frecuencia (Hz)</td><td class="c">{{ hv.frecuencia }}</td>
+    </tr>
+    <tr>
+      <td class="lbl-n">Potencia (W)</td><td class="c">{{ hv.potencia }}</td>
+      <td class="lbl-n">Peso (Kg)</td><td class="c">{{ hv.peso }}</td>
+      <td class="lbl-n">Presión</td><td class="c">{{ hv.presion }}</td>
+    </tr>
+    <tr>
+      <td class="lbl-n">Temperatura (°C)</td><td class="c">{{ hv.temperatura }}</td>
+      <td class="lbl-n">Dimensiones</td><td class="c">{{ hv.dimensiones }}</td>
+      <td class="lbl-n">Capacidad</td><td class="c">{{ hv.capacidad }}</td>
+    </tr>
+  </table>
+</div>
+<div class="gap"></div>
+
+<!-- ===================== CLASIFICACIÓN ===================== -->
+<table class="cols no-corte">
+  <tr>
+    <td class="col">
+      <div class="band">Clasificación Biomédica.</div>
+      <table><tr><td class="c">{{ hv.clasificacion_biomedica }}</td></tr></table>
+      <div class="gap"></div>
+      <div class="band">Fuentes de Alimentación.</div>
+      <table><tr><td class="c">{{ hv.fuente_alimentacion }}</td></tr></table>
+    </td>
+    <td class="col-gap"></td>
+    <td class="col">
+      <div class="band">Clasificación del Riesgo.</div>
+      <table><tr><td class="c">{{ hv.clasificacion_riesgo }}</td></tr></table>
+      <div class="gap"></div>
+      <div class="band">Tecnología Predominante.</div>
+      <table><tr><td class="c">{{ hv.tecnologia_predominante }}</td></tr></table>
+    </td>
+  </tr>
+</table>
+<div class="gap"></div>
+
+<!-- ===================== ACCESORIOS / CONSUMIBLES ===================== -->
+<div class="no-corte">
+  <div class="band">Accesorios / Consumibles.</div>
+  <table>
+    <colgroup><col style="width:8%"><col style="width:46%"><col style="width:23%"><col style="width:23%"></colgroup>
+    <tr><th>Cant.</th><th>Descripción.</th><th>Marca</th><th>Modelo.</th></tr>
+    {% for a in accesorios %}
+    <tr>
+      <td class="c">{{ a.cantidad if a.cantidad is not none }}</td>
+      <td class="c">{{ a.descripcion or '' }}</td>
+      <td class="c">{{ a.marca or '' }}</td>
+      <td class="c">{{ a.modelo or '' }}</td>
+    </tr>
+    {% endfor %}
+  </table>
+</div>
+<div class="gap"></div>
+
+<!-- ===================== DOCUMENTACIÓN ===================== -->
+<div class="no-corte">
+  <div class="band">Documentación.</div>
+  <table>
+    <colgroup><col style="width:36%"><col style="width:14%"><col style="width:36%"><col style="width:14%"></colgroup>
+    <tr>
+      <td class="lbl-n">Manual de Operación:</td><td class="c">{{ si_no(hv.manual_operacion) }}</td>
+      <td class="lbl-n">Manual de Servicio:</td><td class="c">{{ si_no(hv.manual_servicio) }}</td>
+    </tr>
+    <tr>
+      <td class="lbl-n">Ficha Técnica:</td><td class="c">{{ si_no(hv.ficha_tecnica) }}</td>
+      <td class="lbl-n">Guía rápida de operación:</td><td class="c">{{ si_no(hv.guia_rapida) }}</td>
+    </tr>
+  </table>
+</div>
+<div class="gap"></div>
+
+<!-- ===================== PIE ===================== -->
+<table class="pie no-corte">
+  <tr><td>Elaborado Por: <b>MULTILINK INGENIERIA SAS.</b></td><td>Revisado Por: <b>Jefe de Ingeniería.</b></td></tr>
+  <tr><td>Aprobado Por: <b>Gerencia.</b></td><td><b>Fecha de Aprobación:</b> {{ fecha_aprobacion }}</td></tr>
+  <tr><td colspan="2">Todos los derechos reservados. <b>BIOMEGA S.A.S.</b></td></tr>
+</table>
+
+</body>
+</html>

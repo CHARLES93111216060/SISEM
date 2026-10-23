@@ -1,3 +1,4 @@
+import io
 import json
 import re
 import unittest
@@ -323,6 +324,159 @@ class Rutas(unittest.TestCase):
 
     def test_healthz_publico(self):
         self.assertEqual(sisem.test_client().get('/healthz').get_json(), {'status': 'ok'})
+
+
+def imagen_png(ancho=40, alto=30):
+    from PIL import Image
+    salida = io.BytesIO()
+    Image.new('RGBA', (ancho, alto), (200, 30, 30, 128)).save(salida, 'PNG')
+    return salida.getvalue()
+
+
+HOJA_VALIDA = {
+    'id_inventario': '4', 'modelo': 'X-200', 'registro_invima': 'INV-2020', 'area_servicio': 'UCI',
+    'id_responsable': '1', 'fecha_adquisicion': '2024-03-15', 'periodicidad': 'Semestral',
+    'control_metrologico': 'si', 'meses_mantenimiento': ['3', '9'], 'voltaje': '110',
+    'manual_operacion': 'si', 'guia_rapida': 'no',
+    'acc_cantidad_1': '2', 'acc_descripcion_1': 'Cánula <nasal>', 'acc_marca_1': '3',
+    'acc_cantidad_3': '', 'acc_descripcion_3': '',          # filas vacías: no se guardan
+}
+
+
+class HojasDeVida(unittest.TestCase):
+    def setUp(self):
+        helpers.reiniciar()
+        self.c = cliente_sesion()
+
+    def post(self, datos, headers=CSRF):
+        return self.c.post('/mantenimiento/hojas_vida_equipos/guardar', data=datos, headers=headers,
+                           content_type='multipart/form-data')
+
+    def test_paginas_exigen_login(self):
+        anonimo = sisem.test_client()
+        for url in ('/mantenimiento/hojas_vida_equipos', '/crear_hv', '/mantenimiento/hojas_vida_equipos/1/descargar'):
+            self.assertEqual(anonimo.get(url).status_code, 302, url)
+
+    def test_formulario_lista_equipos_y_datos_enlazados(self):
+        html = self.c.get('/crear_hv').get_data(as_text=True)
+        self.assertIn('data-inventario="MED_0077"', html)
+        self.assertIn('data-entidad="Clínica &lt;Norte&gt; &amp; Cía"', html)   # escapado
+        self.assertIn('data-telefono="3001234567"', html)
+        self.assertIn('js/hoja_vida.js', html)
+        self.assertNotRegex(html, r'<script(?![^>]*\bsrc=)')
+
+    def test_guarda_con_foto_y_accesorios(self):
+        datos = dict(HOJA_VALIDA, foto=(io.BytesIO(imagen_png()), '../../foto.png'))
+        r = self.post(datos)
+        self.assertEqual(r.status_code, 201, r.get_json())
+        self.assertEqual(r.get_json()['archivo'], 'hoja_vida_MED_0077.pdf')
+        guardada = helpers.HOJAS[r.get_json()['id']]
+        d = guardada['datos']
+        self.assertEqual((d['id_inventario'], d['id_responsable']), (4, 1))
+        self.assertEqual(d['meses_mantenimiento'], [3, 9])
+        self.assertIsNone(d['cubiculo'])                       # vacío -> NULL
+        self.assertEqual(d['foto_mime'], 'image/jpeg')         # se recodifica como JPEG
+        self.assertTrue(d['foto'].startswith(b'\xff\xd8'))
+        self.assertEqual(d['foto_nombre'], 'foto.png')        # sin rutas
+        self.assertEqual([a['fila'] for a in guardada['accesorios']], [1])
+        self.assertEqual(guardada['accesorios'][0]['cantidad'], 2)
+        # el equipo ya no aparece para otra hoja de vida y un segundo intento se rechaza
+        self.assertNotIn('MED_0077', self.c.get('/crear_hv').get_data(as_text=True))
+        self.assertEqual(self.post(HOJA_VALIDA).status_code, 400)
+
+    def test_duplicado_por_carrera_devuelve_409(self):
+        helpers.HOJAS[1] = {'datos': {'id_inventario': 4}, 'accesorios': []}
+        original = helpers.fake.inventario_sin_hoja_vida
+        helpers.fake.inventario_sin_hoja_vida = lambda: helpers.INVENTARIO   # otro usuario guardó a la vez
+        try:
+            self.assertEqual(self.post(HOJA_VALIDA).status_code, 409)
+        finally:
+            helpers.fake.inventario_sin_hoja_vida = original
+
+    def test_validaciones(self):
+        casos = {
+            'sin equipo': dict(HOJA_VALIDA, id_inventario=''),
+            'equipo inexistente': dict(HOJA_VALIDA, id_inventario='999'),
+            'equipo inyección': dict(HOJA_VALIDA, id_inventario='4 OR 1=1'),
+            'responsable inexistente': dict(HOJA_VALIDA, id_responsable='77'),
+            'periodicidad libre': dict(HOJA_VALIDA, periodicidad='Cada rato'),
+            'si/no inválido': dict(HOJA_VALIDA, ficha_tecnica='quizá'),
+            'fecha inválida': dict(HOJA_VALIDA, fecha_adquisicion='2024-02-31'),
+            'mes 13': dict(HOJA_VALIDA, meses_mantenimiento=['13']),
+            'texto largo': dict(HOJA_VALIDA, cubiculo='x' * 61),
+            'cantidad negativa': dict(HOJA_VALIDA, acc_cantidad_1='-1'),
+            'marca accesorio': dict(HOJA_VALIDA, acc_marca_1='55'),
+            'foto falsa': dict(HOJA_VALIDA, foto=(io.BytesIO(b'<script>x</script>'), 'foto.png')),
+        }
+        for nombre, datos in casos.items():
+            with self.subTest(nombre):
+                self.assertEqual(self.post(datos).status_code, 400)
+        self.assertEqual(helpers.HOJAS, {})
+
+    def test_sin_csrf(self):
+        self.assertEqual(self.post(HOJA_VALIDA, headers={}).status_code, 400)
+        self.assertEqual(helpers.HOJAS, {})
+
+    def test_descarga_pdf(self):
+        hoja_id = self.post(HOJA_VALIDA).get_json()['id']
+        original = informes._html_a_pdf
+        informes._html_a_pdf = lambda html: b'%PDF-1.7 prueba'
+        try:
+            r = self.c.get(f'/mantenimiento/hojas_vida_equipos/{hoja_id}/descargar')
+        finally:
+            informes._html_a_pdf = original
+        self.assertEqual(r.status_code, 200)
+        self.assertEqual(r.mimetype, 'application/pdf')
+        self.assertIn('hoja_vida_MED_0077.pdf', r.headers['Content-Disposition'])
+        self.assertEqual(self.c.get('/mantenimiento/hojas_vida_equipos/999/descargar').status_code, 404)
+
+    def test_html_del_pdf(self):
+        hoja_id = self.post(dict(HOJA_VALIDA, foto=(io.BytesIO(imagen_png()), 'f.png'))).get_json()['id']
+        with sisem.test_request_context():
+            contexto = informes.contexto_hoja_vida(hoja_id)
+            html = informes.render_template('pdf/hoja_de_vida.html', **contexto)
+        for esperado in ('HOJA DE VIDA DE EQUIPO MÉDICO', 'PM_003', 'MED_0077', 'SN-77', 'Concentrador de O2',
+                         'Clínica &lt;Norte&gt; &amp; Cía', 'Juan Pérez', '3001234567', '15/03/2024',
+                         'Semestral', 'Cánula &lt;nasal&gt;', 'B. Braun', 'IIA', 'data:image/jpeg;base64,'):
+            self.assertIn(esperado, html)
+        self.assertEqual([m for m, marcado in contexto['meses'] if marcado], ['Mar.', 'Sep.'])
+        self.assertEqual(len(contexto['accesorios']), 8)
+        self.assertNotIn('<script', html)
+
+    def test_consultar_lista_busca_y_enlaza_pdf(self):
+        self.assertIn('Todavía no hay hojas de vida', self.c.get('/consultar_hv').get_data(as_text=True))
+        self.post(HOJA_VALIDA)
+        self.post(dict(HOJA_VALIDA, id_inventario='9'))
+
+        todas = self.c.get('/consultar_hv').get_data(as_text=True)
+        self.assertIn('2 resultados', todas)
+        self.assertIn('Clínica &lt;Norte&gt; &amp; Cía', todas)                 # escapado
+        self.assertIn('data-url="/mantenimiento/hojas_vida_equipos/1/descargar"', todas)
+        self.assertIn('data-nombre="hoja_vida_MED_0077.pdf"', todas)
+        self.assertIn('23/10/2026', todas)
+
+        una = self.c.get('/consultar_hv?q=sn-99').get_data(as_text=True)
+        self.assertIn('1 resultado', una)
+        self.assertIn('MED/0099', una)
+        self.assertNotIn('MED_0077', una)
+
+        nada = self.c.get('/consultar_hv?q=%3Cscript%3E').get_data(as_text=True)
+        self.assertIn('No se encontraron hojas de vida para «&lt;script&gt;»', nada)
+        self.assertEqual(self.c.get('/consultar_hv?pagina=abc').status_code, 200)
+
+    def test_nombre_de_archivo_seguro(self):
+        self.assertEqual(informes.nombre_archivo_hoja_vida('MED/0099', 5), 'hoja_vida_MED_0099.pdf')
+        self.assertEqual(informes.nombre_archivo_hoja_vida('../..', 5), 'hoja_vida_5.pdf')
+        self.assertEqual(informes.nombre_archivo_hoja_vida(None, 5), 'hoja_vida_5.pdf')
+
+    def test_pdf_solo_lee_recursos_de_static(self):
+        permitido = informes.ruta_local_permitida
+        self.assertTrue(permitido(informes.pdf_asset('images/pdf_logo.png')))
+        self.assertTrue(permitido('data:image/png;base64,AAAA'))
+        app_py = informes.Path(informes.APP_ROOT, 'app.py').as_uri()
+        for url in (app_py, 'file:///etc/passwd', 'http://169.254.169.254/latest/meta-data/',
+                    'https://ejemplo.com/x.png', 'ftp://ejemplo.com/x'):
+            self.assertFalse(permitido(url), url)
 
 
 if __name__ == '__main__':

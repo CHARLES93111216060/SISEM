@@ -1,0 +1,84 @@
+{% extends "layout/base.html" %}
+{% block title %}Consultar hojas de vida{% endblock %}
+{% block content %}
+<div class="dashboard-shell">
+    <section class="page-hero">
+        <div>
+            <span class="eyebrow">Módulo de mantenimiento</span>
+            <h2>Consultar hojas de vida</h2>
+            <p>Busca una hoja de vida y descarga su PDF.</p>
+        </div>
+        <div class="hero-actions">
+            <a class="btn btn-primary" href="{{ url_for('crear_hv') }}">Nueva hoja de vida</a>
+            <a class="btn btn-secondary" href="{{ url_for('hojas_vida_equipos') }}">Volver</a>
+        </div>
+    </section>
+
+    <div class="page-panel">
+        <!-- GET: buscar no modifica datos, así la búsqueda queda en la URL y no necesita token CSRF -->
+        <form class="hv-busqueda" method="get" action="{{ url_for('consultar_hv') }}" role="search">
+            <label class="sr-only" for="hv-q">Buscar</label>
+            <input type="search" class="form-control" id="hv-q" name="q" value="{{ q }}" maxlength="120"
+                   placeholder="Serie, N° de inventario, equipo, entidad o marca">
+            <button type="submit" class="btn btn-primary">Buscar</button>
+            {% if q %}<a class="btn btn-secondary" href="{{ url_for('consultar_hv') }}">Limpiar</a>{% endif %}
+        </form>
+
+        <div class="panel-head">
+            <div>
+                <h3>{% if q %}Resultados para «{{ q }}»{% else %}Hojas de vida registradas{% endif %}</h3>
+                <p>{{ total }} {{ 'resultado' if total == 1 else 'resultados' }}</p>
+            </div>
+        </div>
+
+        {% if hojas %}
+        <div class="table-responsive">
+            <table>
+                <thead>
+                    <tr>
+                        <th>N° inventario</th>
+                        <th>Serie</th>
+                        <th>Equipo</th>
+                        <th>Marca / modelo</th>
+                        <th>Entidad / área</th>
+                        <th>Creada</th>
+                        <th><span class="sr-only">Acciones</span></th>
+                    </tr>
+                </thead>
+                <tbody>
+                    {% for h in hojas %}
+                    <tr>
+                        <td><strong>{{ h.numero_inventario or '—' }}</strong></td>
+                        <td>{{ h.serie or '—' }}</td>
+                        <td>{{ h.nombre_equipo or '—' }}</td>
+                        <td>{{ h.marca or '—' }}{% if h.modelo %} · {{ h.modelo }}{% endif %}</td>
+                        <td>{{ h.entidad or '—' }}{% if h.area_servicio %} · {{ h.area_servicio }}{% endif %}</td>
+                        <td>{{ h.creada }}</td>
+                        <td class="acciones">
+                            <button type="button" class="btn btn-primary btn-sm js-descargar"
+                                    data-url="{{ url_for('descargar_hoja_vida', hoja_id=h.id) }}"
+                                    data-id="{{ h.id }}" data-nombre="{{ h.archivo }}">Descargar PDF</button>
+                        </td>
+                    </tr>
+                    {% endfor %}
+                </tbody>
+            </table>
+        </div>
+        <div id="mensajeHistorial" class="alert" role="status" hidden></div>
+
+        {% if paginas > 1 %}
+        <nav class="paginacion" aria-label="Paginación">
+            {% if pagina > 1 %}<a class="btn btn-secondary btn-sm" href="{{ url_for('consultar_hv', q=q or None, pagina=pagina-1) }}">← Anterior</a>{% endif %}
+            <span>Página {{ pagina }} de {{ paginas }}</span>
+            {% if pagina < paginas %}<a class="btn btn-secondary btn-sm" href="{{ url_for('consultar_hv', q=q or None, pagina=pagina+1) }}">Siguiente →</a>{% endif %}
+        </nav>
+        {% endif %}
+        {% elif q %}
+        <p class="vacio">No se encontraron hojas de vida para «{{ q }}».</p>
+        {% else %}
+        <p class="vacio">Todavía no hay hojas de vida registradas.</p>
+        {% endif %}
+    </div>
+</div>
+{% endblock %}
+{% block scripts %}<script src="{{ url_for('static', filename='js/historial.js') }}"></script>{% endblock %}

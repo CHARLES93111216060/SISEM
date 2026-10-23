@@ -10,7 +10,10 @@ Cada tipo de equipo se resuelve así:
   * Resto de equipos: plantilla genérica (``pdf/protocolo_generico.html``) que se
     construye leyendo el propio formulario HTML del equipo, de modo que al
     completar un formulario nuevo su PDF aparece sin escribir más código.
+
+Las hojas de vida de equipos (formato PM_003) usan ``pdf/hoja_de_vida.html``.
 """
+import base64
 import json
 import logging
 import os
@@ -20,6 +23,8 @@ from datetime import datetime
 from functools import lru_cache
 from html.parser import HTMLParser
 from pathlib import Path
+from urllib.parse import urlsplit
+from urllib.request import url2pathname
 
 from flask import render_template
 
@@ -463,9 +468,83 @@ def generar_reporte_html(reporte_id):
 
 def generar_reporte_pdf(reporte_id):
     """Genera el PDF en memoria y devuelve ``bytes`` (no se escriben archivos temporales)."""
+    return _html_a_pdf(generar_reporte_html(reporte_id))   # Jinja2 escapa los datos del usuario
+
+
+# ----------------------------------------------------------------------------------------
+# Hoja de vida de equipo médico (formato PM_003)
+# ----------------------------------------------------------------------------------------
+MESES_HV = ('Ene.', 'Feb.', 'Mar.', 'Abr.', 'May.', 'Jun.',
+            'Jul.', 'Ago.', 'Sep.', 'Oct.', 'Nov.', 'Dic.')
+FILAS_ACCESORIOS_HV = 8
+FECHA_APROBACION_HV = ''        # fecha de aprobación del formato PM_003 (ej. '1/11/2021')
+SI_NO = {'si': 'Sí', 'no': 'No'}
+
+
+def nombre_archivo_hoja_vida(inventario, hoja_id):
+    """'hoja_vida_MED_0001.pdf' (solo caracteres seguros para un nombre de archivo)."""
+    base = re.sub(r'[^A-Za-z0-9_.-]', '_', _texto(inventario).strip())[:80].strip('._')
+    return f"hoja_vida_{base or hoja_id}.pdf"
+
+
+def contexto_hoja_vida(hoja_id):
+    """Datos de la hoja de vida listos para ``pdf/hoja_de_vida.html``."""
+    hoja = db.obtener_hoja_vida(hoja_id)
+    if not hoja:
+        raise ReporteNoEncontrado(f"No existe la hoja de vida {hoja_id}")
+
+    por_fila = {a['fila']: a for a in hoja.get('accesorios') or []}
+    meses = set(hoja.get('meses_mantenimiento') or [])
+    foto = ''
+    if hoja.get('foto') and hoja.get('foto_mime') in ('image/jpeg', 'image/png'):
+        foto = f"data:{hoja['foto_mime']};base64,{base64.b64encode(bytes(hoja['foto'])).decode('ascii')}"
+
+    return {
+        'hv': {clave: ('' if valor is None else valor) for clave, valor in hoja.items()},
+        'fecha_adquisicion': _fecha(hoja.get('fecha_adquisicion')),
+        'meses': [(nombre, numero in meses) for numero, nombre in enumerate(MESES_HV, start=1)],
+        'accesorios': [por_fila.get(n, {}) for n in range(1, FILAS_ACCESORIOS_HV + 1)],
+        'foto': foto,
+        'si_no': lambda valor: SI_NO.get(_texto(valor), ''),
+        'fecha_aprobacion': FECHA_APROBACION_HV,
+        'asset': pdf_asset,
+    }
+
+
+def generar_hoja_vida_pdf(hoja_id):
+    """Devuelve ``(bytes del PDF, nombre de archivo)`` de una hoja de vida."""
+    contexto = contexto_hoja_vida(hoja_id)
+    pdf = _html_a_pdf(render_template('pdf/hoja_de_vida.html', **contexto))
+    return pdf, nombre_archivo_hoja_vida(contexto['hv']['numero_inventario'], hoja_id)
+
+
+# ----------------------------------------------------------------------------------------
+# Conversión HTML -> PDF (compartida por reportes y hojas de vida)
+# ----------------------------------------------------------------------------------------
+def ruta_local_permitida(url):
+    """True si ``url`` es ``data:`` o un ``file://`` dentro de ``static/``."""
+    partes = urlsplit(url)
+    if partes.scheme.lower() == 'data':
+        return True
+    if partes.scheme.lower() != 'file':
+        return False
+    return os.path.realpath(url2pathname(partes.path)).startswith(STATIC_DIR + os.sep)
+
+
+def _html_a_pdf(html):
+    """Convierte el HTML en PDF en memoria. WeasyPrint solo puede leer recursos de static/
+    (y datos ``data:``): ni internet ni otros archivos del servidor."""
     # Import tardío: si faltan las librerías del sistema (Pango) la app sigue arrancando
     # y el error aparece solo al pedir un PDF, con un mensaje claro en el log.
     from weasyprint import HTML
+    from weasyprint.urls import URLFetcher
 
-    html = generar_reporte_html(reporte_id)   # Jinja2 escapa todos los datos del usuario
-    return HTML(string=html, base_url=STATIC_DIR + os.sep).write_pdf()
+    class FetcherSeguro(URLFetcher):
+        def fetch(self, url, headers=None):
+            if not ruta_local_permitida(url):
+                logger.warning("Recurso bloqueado en el PDF: %s", url[:200])
+                raise ValueError("Recurso no permitido en el PDF")
+            return super().fetch(url, headers)
+
+    return HTML(string=html, base_url=STATIC_DIR + os.sep,
+                url_fetcher=FetcherSeguro(allowed_protocols=('file', 'data'))).write_pdf()
