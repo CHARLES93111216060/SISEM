@@ -1,5 +1,5 @@
 # Blueprint opcional para Render (https://render.com). Los valores "sync: false" se
-# escriben en el panel de Render, no en este archivo. Si ya creaste la base de datos a mano,
+# escriben en el panel de Render, no en este archivo. Si se creó la base de datos a mano,
 # borra el bloque "databases" y define DATABASE_URL en el panel con la Internal Database URL.
 services:
   - type: web
