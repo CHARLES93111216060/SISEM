@@ -23,7 +23,7 @@ body{
     width:280px;
     min-width:280px;
     height:100vh;
-    background:#1f293e;
+    background:#666666;
     color:#eef2ff;
     position:fixed;
     left:0;
@@ -134,17 +134,22 @@ body.scrolled .sidebar{
     width:100%;
     padding:14px 16px;
     color:#eef2ff;
-    background:rgba(255,255,255,0.03);
+    background:#9b9b9b;
     border:none;
     text-decoration:none;
     font-size:0.95rem;
     cursor:pointer;
     transition:background 0.25s ease;
+
+}
+
+.submenu:hover{
+    background:#3b82f6;
 }
 
 .nav-link:hover,
 .submenu-toggle:hover{
-    background:rgba(255,255,255,0.1);
+    background:#3b82f6;
 }
 
 .nav-link span,
@@ -152,6 +157,8 @@ body.scrolled .sidebar{
     flex:1;
     text-align:left;
 }
+
+
 
 .nav-icon{
     width:20px;

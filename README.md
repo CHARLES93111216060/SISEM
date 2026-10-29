@@ -1,7 +1,8 @@
 # SISEM — Sistema Integrado de Seguimiento de Equipos Médicos
 
-Aplicación Flask para registrar mantenimientos de equipos biomédicos y las hojas de vida de los equipos,
-y descargar ambos documentos en PDF.
+Aplicación Flask para registrar mantenimientos de equipos biomédicos y las hojas de vida de los equipos
+(con descarga de ambos documentos en PDF) y para gestionar el inventario de equipos, ya sea uno por uno
+o cargando un archivo Excel.
 
 ## Estructura del proyecto
 
@@ -9,8 +10,12 @@ y descargar ambos documentos en PDF.
 SISEM_PROJECT/
 ├── app.py                      # Aplicación Flask: configuración, seguridad (sesión, CSRF, cabeceras,
 │                               #   límite de intentos de login), manejo de errores y todas las rutas.
-│                               #   Valida los reportes (_validar_informe) y las hojas de vida
-│                               #   (_validar_hoja_vida, _procesar_foto) antes de guardarlos.
+│                               #   Valida antes de guardar:
+│                               #   · reportes (_validar_informe);
+│                               #   · hojas de vida (_validar_hoja_vida, _procesar_foto);
+│                               #   · inventario manual (_validar_inventario);
+│                               #   · carga de inventario por Excel (_abrir_excel, _leer_filas_excel,
+│                               #     _fila_excel_a_formulario, procesar_excel).
 ├── requirements.txt            # Dependencias de Python con versión fija (formato paquete==versión).
 ├── Dockerfile                  # Imagen para Render: Python + librerías de sistema de WeasyPrint (Pango),
 │                               #   usuario sin privilegios y arranque con gunicorn.
@@ -24,10 +29,13 @@ SISEM_PROJECT/
 │   ├── __init__.py             # Marca la carpeta como paquete de Python.
 │   ├── db.py                   # Acceso a PostgreSQL con pool de conexiones (psycopg). Lee DATABASE_URL o
 │   │                           #   db_host/db_user/…
-│   │                           #   · Catálogos: clientes, personal, marcas, servicios, tipos de equipo.
+│   │                           #   · Catálogos: clientes, personal, marcas, servicios, tipos de equipo,
+│   │                           #     riesgos.
 │   │                           #   · Reportes: guardar, leer, listar, contar.
 │   │                           #   · Hojas de vida: equipos sin hoja de vida, responsables, guardar
 │   │                           #     (hoja + accesorios en una transacción), leer, buscar y contar.
+│   │                           #   · Inventario: listado con los nombres de tipo, marca y cliente (JOIN) y
+│   │                           #     guardar_inventario (lanza InventarioDuplicado si la serie ya existe).
 │   └── postgres/               # Migración de MariaDB a PostgreSQL
 │       ├── LEEME.md            # Guía paso a paso de la migración.
 │       ├── 00_tipos_en_mariadb.sql   # Consulta los tipos reales de columnas en MariaDB.
@@ -73,6 +81,13 @@ SISEM_PROJECT/
 │   │   │   │                                 #   el nombre de cada campo es el de la columna en la tabla.
 │   │   │   └── consultar_hoja_vida.html      # Búsqueda (serie, inventario, equipo, entidad, marca), tabla
 │   │   │                                     #   paginada y botón para descargar el PDF de cada hoja de vida.
+│   │   ├── comercial/
+│   │   │   ├── inventario.html               # Listado del inventario con nombres (tipo, marca, cliente) y
+│   │   │   │                                 #   buscador que filtra la tabla mientras se escribe.
+│   │   │   ├── ingresar_inventario.html      # Formulario para registrar un equipo (listas desplegables con
+│   │   │   │                                 #   los catálogos); conserva lo escrito si hay un error.
+│   │   │   └── cargar_excel.html             # Carga de inventario desde un .xlsx: formato esperado, resumen
+│   │   │                                     #   del resultado y tabla con los errores por fila.
 │   │   ├── biomedical_form.html              # Borrador antiguo; ninguna ruta lo usa.
 │   │   ├── calibration_form.html             # Vacío; ninguna ruta lo usa.
 │   │   └── protocolos_mantenimiento/         # Un formulario por tipo de equipo (ids 1-16 de TIPOS_EQUIPO);
@@ -114,6 +129,8 @@ SISEM_PROJECT/
 │   │   └── login.css           # Estilos de la pantalla de inicio de sesión.
 │   ├── js/
 │   │   ├── app.js              # Común: menú lateral, lectura del token CSRF y descarga del PDF por fetch.
+│   │   ├── buscador.js         # Filtra las filas de una tabla mientras se escribe (sin tildes ni mayúsculas).
+│   │   │                       #   Reutilizable: <input data-filtro-tabla="id_de_la_tabla">.
 │   │   ├── forms.js            # Carga de formularios por AJAX, envío del informe en JSON y descarga del PDF.
 │   │   ├── historial.js        # Botones "Descargar PDF" del historial de reportes y de la consulta de
 │   │   │                       #   hojas de vida.
@@ -130,8 +147,9 @@ SISEM_PROJECT/
 │   ├── __init__.py
 │   ├── helpers.py              # Entorno de prueba: base de datos simulada (reportes, inventario, hojas de
 │   │                           #   vida) y variables de entorno falsas.
-│   ├── test_sisem.py           # Pruebas de seguridad, rutas, validación, contenido de los PDF y del
-│   │                           #   módulo de hojas de vida (guardar, validar, duplicados, consultar, PDF).
+│   ├── test_sisem.py           # Pruebas de seguridad, rutas, validación, contenido de los PDF, hojas de
+│   │                           #   vida (guardar, validar, duplicados, consultar, PDF), inventario (listado,
+│   │                           #   formulario, serie repetida) y carga por Excel (archivos maliciosos incluidos).
 │   └── test_db.py              # Pruebas de database/db.py con un pool de conexiones simulado.
 │
 └── tools/
@@ -140,22 +158,27 @@ SISEM_PROJECT/
 
 ## Rutas
 
-| Ruta                                                 | Método          | Qué hace                                                  |
-| ---------------------------------------------------- | ---------------- | ---------------------------------------------------------- |
-| `/login`, `/logout`                              | GET/POST, POST   | Inicio y cierre de sesión                                 |
-| `/dashboard`, `/clientes`                        | GET              | Panel principal y listado de clientes                      |
-| `/mantenimiento/reportes`                          | GET              | Página para generar reportes de mantenimiento             |
-| `/load_form/<tipo>`                                | GET (AJAX)       | Devuelve un formulario de la lista blanca                  |
-| `/mantenimiento/reportes/guardar_informe`          | POST (JSON)      | Valida y guarda un reporte                                 |
-| `/mantenimiento/reportes/<id>/descargar`           | GET              | PDF del reporte                                            |
-| `/mantenimiento/historial`                         | GET              | Historial paginado de reportes                             |
-| `/mantenimiento/hojas_vida_equipos`                | GET              | Página del módulo de hojas de vida                       |
-| `/crear_hv`                                        | GET              | Formulario de nueva hoja de vida                           |
-| `/mantenimiento/hojas_vida_equipos/guardar`        | POST (multipart) | Valida y guarda la hoja de vida y sus accesorios           |
-| `/mantenimiento/hojas_vida_equipos/<id>/descargar` | GET              | PDF de la hoja de vida                                     |
-| `/consultar_hv?q=…&pagina=…`                     | GET              | Búsqueda y listado de hojas de vida                       |
-| `/<modulo>/<seccion>`                              | GET              | Módulos del menú aún no implementados ("próximamente") |
-| `/healthz`                                         | GET              | Chequeo de salud para Render (sin sesión)                 |
+| Ruta                                                 | Método           | Qué hace                                                  |
+| ---------------------------------------------------- | ----------------- | ---------------------------------------------------------- |
+| `/login`, `/logout`                              | GET/POST, POST    | Inicio y cierre de sesión                                 |
+| `/dashboard`, `/clientes`                        | GET               | Panel principal y listado de clientes                      |
+| `/mantenimiento/reportes`                          | GET               | Página para generar reportes de mantenimiento             |
+| `/load_form/<tipo>`                                | GET (AJAX)        | Devuelve un formulario de la lista blanca                  |
+| `/mantenimiento/reportes/guardar_informe`          | POST (JSON)       | Valida y guarda un reporte                                 |
+| `/mantenimiento/reportes/<id>/descargar`           | GET               | PDF del reporte                                            |
+| `/mantenimiento/historial`                         | GET               | Historial paginado de reportes                             |
+| `/mantenimiento/hojas_vida_equipos`                | GET               | Página del módulo de hojas de vida                       |
+| `/crear_hv`                                        | GET               | Formulario de nueva hoja de vida                           |
+| `/mantenimiento/hojas_vida_equipos/guardar`        | POST (multipart)  | Valida y guarda la hoja de vida y sus accesorios           |
+| `/mantenimiento/hojas_vida_equipos/<id>/descargar` | GET               | PDF de la hoja de vida                                     |
+| `/consultar_hv?q=…&pagina=…`                     | GET               | Búsqueda y listado de hojas de vida                       |
+| `/comercial/inventario`                            | GET               | Listado del inventario con buscador                        |
+| `/comercial/ingresar_inventario?guardado=…`       | GET               | Formulario para registrar un equipo (y aviso de guardado)  |
+| `/comercial/guardar_inventario`                    | POST (formulario) | Valida y guarda un equipo; redirige al formulario vacío   |
+| `/comercial/cargar_excel`                          | GET               | Página para cargar inventario desde un .xlsx              |
+| `/comercial/procesar_excel`                        | POST (multipart)  | Valida el archivo y guarda cada fila; muestra el resumen   |
+| `/<modulo>/<seccion>`                              | GET               | Módulos del menú aún no implementados ("próximamente") |
+| `/healthz`                                         | GET               | Chequeo de salud para Render (sin sesión)                 |
 
 Todas, salvo `/login` y `/healthz`, exigen sesión iniciada. Todos los POST exigen el token CSRF.
 
@@ -163,18 +186,28 @@ Todas, salvo `/login` y `/healthz`, exigen sesión iniciada. Todos los POST exig
 
 PostgreSQL. Tablas que usa la aplicación:
 
-| Tabla / vista                                                               | Uso                                                                                                    |
-| --------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------ |
-| `clientes`, `personal`, `marcas`, `mantenimientos`, `tipo_equipo` | Catálogos (listas desplegables y nombres en los PDF)                                                  |
-| `inventario`                                                              | Equipos: serie, N° de inventario, tipo, marca, cliente, riesgo, INVIMA                                |
-| `reportes`                                                                | Reportes de mantenimiento (ids en columnas + formulario completo como JSON)                            |
-| `hojas_vida_equipos`                                                      | Hoja de vida de cada equipo (`id_inventario` único → una por equipo), incluida la foto (`bytea`) |
-| `hojas_vida_accesorios`                                                   | Hasta 8 accesorios por hoja de vida (`id_hoja_vida`, `fila` 1-8)                                   |
-| `v_hojas_vida` (vista)                                                    | Une la hoja de vida con inventario, tipo, marca, cliente y responsable; la usan el PDF y la consulta   |
+| Tabla / vista                                                               | Uso                                                                                                                                           |
+| --------------------------------------------------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------- |
+| `clientes`, `personal`, `marcas`, `mantenimientos`, `tipo_equipo` | Catálogos (listas desplegables y nombres en los PDF)                                                                                         |
+| `riesgo`                                                                  | Clasificaciones del riesgo (`I`, `IIA`, `IIB`, `III`); `inventario.riesgo` guarda el texto                                          |
+| `inventario`                                                              | Equipos: tipo, marca, lote, serie, serial interno, cliente, riesgo, INVIMA. **Solo `serie` es única** (restricción `unico_serie`) |
+| `reportes`                                                                | Reportes de mantenimiento (ids en columnas + formulario completo como JSON)                                                                   |
+| `hojas_vida_equipos`                                                      | Hoja de vida de cada equipo (`id_inventario` único → una por equipo), incluida la foto (`bytea`)                                        |
+| `hojas_vida_accesorios`                                                   | Hasta 8 accesorios por hoja de vida (`id_hoja_vida`, `fila` 1-8)                                                                          |
+| `v_hojas_vida` (vista)                                                    | Une la hoja de vida con inventario, tipo, marca, cliente y responsable; la usan el PDF y la consulta                                          |
 
-`hojas_vida_equipos`, `hojas_vida_accesorios` y `v_hojas_vida` se crearon directamente en la base y **no están
-en `database/postgres/01_esquema.sql`**. Antes de desplegar en una base nueva (por ejemplo, la de Render), hay
-que crearlas allí también.
+La base de Render es una **copia exacta** de la base local (estructura y datos). Cualquier cambio de estructura
+(tablas, columnas, restricciones, vistas) hay que hacerlo en las dos.
+
+`riesgo`, `hojas_vida_equipos`, `hojas_vida_accesorios`, `v_hojas_vida`, las columnas `inventario.invima` y
+`personal.telefono` y la restricción `unico_serie` se crearon directamente en la base y **no están en
+`database/postgres/01_esquema.sql`**. Para montar una base nueva desde cero, copia la estructura de la base
+local (por ejemplo, con *Generate SQL → DDL* de DBeaver) en vez de usar solo ese script.
+
+**Nombres repetidos en los catálogos.** Hoy `tipo_equipo` tiene los 16 tipos dos veces (ids 1-16 y 18-33) y
+casi todas las marcas están repetidas, así que las listas desplegables muestran nombres duplicados. La carga
+por Excel no se ve afectada: cuando un nombre tiene varios ids usa el **menor** (en `tipo_equipo`, los 1-16 que
+usan los formularios y PDF de mantenimiento).
 
 ## Flujo de datos
 
@@ -277,6 +310,60 @@ flowchart TD
    y `\` escritos por el usuario se buscan como texto normal. Cada fila tiene un botón que vuelve a
    generar y descargar el PDF (`historial.js`).
 
+### Inventario de equipos
+
+```mermaid
+flowchart TD
+    U[Navegador] -->|1. GET /comercial/inventario| L[app.py · inventario]
+    L -->|SELECT inventario JOIN tipo_equipo,<br/>marcas, clientes| DB[(PostgreSQL<br/>database/db.py)]
+    L -->|tabla con nombres| U
+    U -->|filtrar mientras escribe| B[buscador.js<br/>solo en el navegador]
+    U -->|2. GET /comercial/ingresar_inventario| F[app.py · ingresar_inventario<br/>catálogos para las listas]
+    U -->|3. POST /comercial/guardar_inventario<br/>formulario + csrf_token| G[app.py · guardar_inventario<br/>_validar_inventario]
+    G -->|INSERT parametrizado| DB
+    G -->|error: mismo formulario con lo escrito<br/>éxito: redirige con ?guardado=…| U
+    U -->|4. POST /comercial/procesar_excel<br/>archivo .xlsx + csrf_token| X[app.py · procesar_excel]
+    X -->|_abrir_excel: firma ZIP, tamaño,<br/>sin macros, defusedxml| X2[_leer_filas_excel<br/>encabezados por nombre]
+    X2 -->|nombre → id con los catálogos<br/>_validar_inventario por fila| DB
+    X -->|resumen + errores por fila| U
+```
+
+1. **Listado.** `/comercial/inventario` trae los equipos con una sola consulta que une `inventario` con
+   `tipo_equipo`, `marcas` y `clientes`, así la tabla muestra nombres y no ids (`LEFT JOIN`: un equipo sin
+   marca aparece con "—"). El buscador (`buscador.js`) oculta en el navegador las filas que no coinciden con
+   lo escrito, sin distinguir mayúsculas ni tildes, y avisa cuando no hay coincidencias.
+2. **Registro manual.** `/comercial/ingresar_inventario` muestra el formulario con las listas de tipo de
+   equipo, marca, cliente y riesgo (catálogos en tuplas: `[0]` es el id y `[1]` el nombre). Al enviarlo,
+   `guardar_inventario` pasa los datos por `_validar_inventario`:
+
+   - toma **solo** los 8 campos conocidos y los traduce a columnas (`equipo` → `id_equipo`,
+     `interno` → `serial_inventario_interno`, `cliente` → `id_cliente`); el token CSRF y cualquier campo
+     extra se ignoran;
+   - comprueba que tipo, marca y cliente existan, que el riesgo sea uno de la tabla `riesgo`, y que los textos
+     no estén vacíos ni pasen el largo de su columna.
+
+   Si algo falla, vuelve a mostrar el formulario con el mensaje y lo ya escrito. Si la **serie ya existe**,
+   PostgreSQL rechaza el `INSERT` (restricción `unico_serie`) y se muestra "Ya existe un equipo con esa
+   serie.". Si todo sale bien, redirige al formulario vacío con el aviso "Equipo … guardado" (así recargar la
+   página no lo guarda dos veces).
+3. **Carga por Excel.** En `/comercial/cargar_excel` se sube un `.xlsx` (máx. 1 MB y 1000 filas).
+   `procesar_excel`:
+
+   - revisa el archivo antes de abrirlo (`_abrir_excel`): extensión `.xlsx`, firma ZIP real, tamaño
+     descomprimido (máx. 20 MB) y número de archivos internos (máx. 300), y que no traiga macros. `openpyxl`
+     lo abre en modo lectura con `defusedxml`, que bloquea los ataques XML, y lee solo valores calculados
+     (las fórmulas nunca se ejecutan);
+   - lee la fila 1 como encabezado **por nombre**, en cualquier orden (`Tipo de equipo`, `Marca`, `Serie`,
+     `Lote`, `Serial de inventario interno`, `Cliente`, `Riesgo`, `INVIMA`) y avisa si falta alguna columna;
+   - por cada fila convierte los nombres en ids con los catálogos, sin distinguir mayúsculas ni tildes. Si un
+     nombre está repetido en el catálogo, usa el id menor. Rechaza textos que empiezan por `=`, `+` o `@`
+     (parecen fórmulas) y aplica la misma `_validar_inventario` del formulario manual;
+   - guarda **cada fila por separado**: una fila con error no detiene las demás. El único dato que no se puede
+     repetir es la **serie**; lote, serial interno, INVIMA y los demás pueden repetirse.
+
+   La página muestra "N equipos guardados, M filas con error" y una tabla con el número real de la fila en
+   Excel y el motivo (hasta 50). Los errores internos solo van al log del servidor.
+
 En todas las respuestas `app.py` agrega cabeceras de seguridad (CSP, `X-Frame-Options`, `nosniff`,
 HSTS en HTTPS y `Cache-Control: no-store` en páginas con datos). Si ocurre un error, el detalle queda en
 el log del servidor y el usuario solo ve un mensaje genérico (`error.html` o JSON `{"error": ...}`).
@@ -331,22 +418,30 @@ python -m unittest discover -s tests -t . -v
 ```
 
 Usan una base de datos simulada; no necesitan PostgreSQL. Cubren login, CSRF, validación, cabeceras,
-cálculos del informe, el HTML de los 16 tipos de equipo y el módulo de hojas de vida (guardado con foto y
-accesorios, validaciones, duplicados, consulta, nombre del archivo y restricciones del generador de PDF).
+cálculos del informe, el HTML de los 16 tipos de equipo, el módulo de hojas de vida (guardado con foto y
+accesorios, validaciones, duplicados, consulta, nombre del archivo y restricciones del generador de PDF), el
+inventario (listado con nombres y buscador, formulario, validaciones, serie repetida) y la carga por Excel
+(nombres sin tildes ni mayúsculas, encabezados en otro orden, errores por fila y archivos rechazados: texto
+renombrado, bomba ZIP, macros, bomba XML, más de 1000 filas, sin CSRF).
 **No** generan el PDF final (eso lo hace WeasyPrint): después de desplegar, descarga un PDF de cada
 documento para revisar el diseño.
 
 ## Desplegar en Render
 
 1. Subir el proyecto a un repositorio **sin** el `.env` (ya está en `.gitignore`).
-2. Crear un *Web Service* con runtime **Docker** (o usa `render.yaml`).
-3. Definit las variables de entorno de `.env.example` en el panel de Render
+2. Crear un *Web Service* con runtime **Docker** (o usar `render.yaml`).
+3. Definir las variables de entorno de `.env.example` en el panel de Render
    (`SECRET_KEY`, `ADMIN_USER`, `ADMIN_PASSWORD_HASH`, `DATABASE_URL`, `TRUST_PROXY=1`, `FLASK_DEBUG=false`).
 4. El chequeo de salud es `/healthz`.
 
-La base de datos es **PostgreSQL**. En Render define `DATABASE_URL` con la *Internal Database URL* de tu base.
-La guía para migrar desde MariaDB (esquema, copia de datos con DBeaver y verificación) está en `database/postgres/LEEME.md`.
-Recuerdar crear también las tablas de hojas de vida (ver "Base de datos").
+La base de datos es **PostgreSQL** y la de Render es una copia exacta de la local. En Render, `DATABASE_URL`
+debe ser la *Internal Database URL* de esa base. Si se usa `render.yaml` como Blueprint, revisa su bloque
+`databases`: está pensado para que Render cree una base nueva, así que con una base creada a mano hay que
+quitarlo (y la parte `fromDatabase` de `DATABASE_URL`) para no conectar la app a una base vacía.
+
+`requirements.txt` incluye `openpyxl` (lectura de Excel) y `defusedxml` (protección XML): sin ellos la app no
+arranca o la carga por Excel queda sin protección. La guía para migrar desde MariaDB (esquema, copia de datos
+con DBeaver y verificación) está en `database/postgres/LEEME.md`.
 
 ## Seguridad: qué se hizo
 
@@ -356,7 +451,8 @@ Recuerdar crear también las tablas de hojas de vida (ver "Base de datos").
 - Cookie de sesión `HttpOnly`, `SameSite=Lax` y `Secure` (en producción); sesión nueva al iniciar sesión; expira por inactividad.
 - Cabeceras: Content-Security-Policy estricta (sin scripts inline), `X-Frame-Options`, `nosniff`, HSTS, `Cache-Control: no-store`.
 - `SECRET_KEY` obligatoria en producción; `FLASK_DEBUG` apagado por defecto (antes estaba **encendido**).
-- Validación en el servidor de reportes y hojas de vida (tipos, longitudes, fechas, valores permitidos, ids existentes, tamaño máximo de 1 MB por envío).
+- Validación en el servidor de reportes, hojas de vida e inventario (tipos, longitudes, fechas, valores permitidos, ids existentes, tamaño máximo de 1 MB por envío). Los formularios solo aceptan los campos conocidos; el resto se ignora.
+- Carga por Excel: solo `.xlsx` con firma ZIP real, límite de tamaño descomprimido y de archivos internos (contra bombas ZIP), sin macros, `defusedxml` contra ataques XML, sin ejecutar fórmulas, rechazo de textos que empiezan por `=`, `+` o `@`, máximo 1000 filas y la misma validación del formulario manual en cada fila.
 - Fotos de las hojas de vida revisadas y recodificadas con Pillow (sin metadatos ni contenido que no sea imagen).
 - Los errores ya no devuelven `str(e)` al navegador (podía filtrar datos de la base); se registran en el log.
 - Consultas SQL parametrizadas con pool de conexiones (PostgreSQL); en las búsquedas, los comodines del usuario se escapan.
@@ -368,4 +464,6 @@ Recuerdar crear también las tablas de hojas de vida (ver "Base de datos").
 
 - Completar los módulos pendientes del aplicativo.
 - Escribir la fecha de aprobación del formato PM_003 en `FECHA_APROBACION_HV`.
-- Agregar a los scripts de `database/postgres/` la creación de `hojas_vida_equipos`, `hojas_vida_accesorios` y `v_hojas_vida`.
+- Agregar a los scripts de `database/postgres/` la estructura creada a mano (`riesgo`, `hojas_vida_equipos`, `hojas_vida_accesorios`, `v_hojas_vida`, `inventario.invima`, `personal.telefono`, `unico_serie`).
+- Limpiar los nombres repetidos de `tipo_equipo`, `marcas` y `clientes` (conservando en `tipo_equipo` los ids 1-16).
+- Si el inventario crece a miles de equipos, pasar el buscador del navegador a una búsqueda paginada en el servidor (como en la consulta de hojas de vida).
