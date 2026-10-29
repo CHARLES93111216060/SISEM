@@ -1,5 +1,10 @@
 # Blueprint opcional para Render (https://render.com). Los valores "sync: false" se
+<<<<<<< HEAD
 # escriben en el panel de Render, no en este archivo.
+=======
+# escriben en el panel de Render, no en este archivo. Si se creó la base de datos a mano,
+# borra el bloque "databases" y define DATABASE_URL en el panel con la Internal Database URL.
+>>>>>>> 537504d9c54c75ba124af16eaeae473587213602
 services:
   - type: web
     name: sisem
