@@ -1,0 +1,69 @@
+{% extends 'layout/base.html' %}
+
+{% block title %}Inventario{% endblock %}
+
+{% block content %}
+<div class="dashboard-shell">
+    <section class="page-hero">
+        <div>
+            <span class="eyebrow">Módulo Comercial</span>
+            <h2>Inventario</h2>
+            <p>Consulta y gestiona el inventario de los equipos registrados.</p>
+        </div>
+        <div class="hero-actions">
+            <a class="btn btn-primary" href="{{ url_for('ingresar_inventario') }}">Ingresar nuevo item al inventario</a>
+        </div>
+    </section>
+
+    <div class="page-panel">
+        <div class="panel-head">
+            <div>
+                <h3>Equipos registrados</h3>
+                <p>{{ inventario|length }} en total</p>
+            </div>
+        </div>
+
+        {% if inventario %}
+        <!-- Los nombres (tipo, marca, cliente) vienen unidos desde la consulta (db.inventario) -->
+        <label class="sr-only" for="filtro_inventario">Filtrar inventario</label>
+        <input type="search" class="form-control mb-3" id="filtro_inventario" autocomplete="off"
+               data-filtro-tabla="tabla_inventario" placeholder="Filtrar por serie, lote, cliente, etc.">
+        <div class="table-responsive">
+            <table id="tabla_inventario">
+                <thead>
+                    <tr>
+                        <th>Tipo de equipo</th>
+                        <th>Marca</th>
+                        <th>Serie</th>
+                        <th>Serial de inventario interno</th>
+                        <th>Lote</th>
+                        <th>Cliente</th>
+                        <th>Riesgo</th>
+                        <th>INVIMA</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    {% for item in inventario %}
+                    <tr>
+                        <td>{{ item.tipo_equipo or '—' }}</td>
+                        <td>{{ item.marca or '—' }}</td>
+                        <td>{{ item.serie }}</td>
+                        <td><strong>{{ item.serial_inventario_interno }}</strong></td>
+                        <td>{{ item.lote }}</td>
+                        <td>{{ item.cliente or '—' }}</td>
+                        <td>{{ item.riesgo or '—' }}</td>
+                        <td>{{ item.invima or '—' }}</td>
+                    </tr>
+                    {% endfor %}
+                </tbody>
+            </table>
+        </div>
+        <p class="vacio" id="tabla_inventario_vacio" hidden>Ningún equipo coincide con la búsqueda.</p>
+        {% else %}
+        <p class="vacio">Todavía no hay equipos en el inventario.</p>
+        {% endif %}
+    </div>
+</div>
+{% endblock %}
+
+{% block scripts %}<script src="{{ url_for('static', filename='js/buscador.js') }}"></script>{% endblock %}

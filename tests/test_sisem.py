@@ -479,5 +479,236 @@ class HojasDeVida(unittest.TestCase):
             self.assertFalse(permitido(url), url)
 
 
+EQUIPO_VALIDO = {'csrf_token': 'token-de-prueba', 'equipo': '2', 'marca': '3', 'serie': 'SN-500',
+                 'lote': 'L-1', 'interno': 'MED_0500', 'invima': 'INVIMA-2024-1', 'cliente': '7', 'riesgo': 'IIA'}
+
+
+class Inventario(unittest.TestCase):
+    def setUp(self):
+        helpers.reiniciar()
+        self.c = cliente_sesion()
+
+    def post(self, datos):
+        return self.c.post('/comercial/guardar_inventario', data=datos)
+
+    def test_listado_muestra_nombres(self):
+        html = self.c.get('/comercial/inventario').get_data(as_text=True)
+        self.assertIn('1 en total', html)
+        self.assertIn('<td>Monitor</td>', html)
+        self.assertIn('Clínica &lt;Norte&gt; &amp; Cía', html)      # escapado
+        self.assertIn('<td>—</td>', html)                            # marca vacía
+        self.assertIn('</table>', html)
+        self.assertIn('data-filtro-tabla="tabla_inventario"', html)
+        self.assertIn('id="tabla_inventario"', html)
+        self.assertIn('js/buscador.js', html)
+        self.assertNotRegex(html, r'<script(?![^>]*\bsrc=)')          # nada inline (lo bloquea la CSP)
+        self.assertEqual(self.c.get('/static/js/buscador.js').status_code, 200)
+
+    def test_formulario_llena_listas(self):
+        html = self.c.get('/comercial/ingresar_inventario').get_data(as_text=True)
+        self.assertIn('<option value="2" >Bomba de infusión</option>', html)
+        self.assertIn('B. Braun', html)
+        self.assertIn('Clínica &lt;Norte&gt; &amp; Cía', html)
+        self.assertIn('<option value="IIA" >IIA</option>', html)
+        self.assertEqual(html.count('name="invima"'), 1)
+
+    def test_guarda_solo_columnas_conocidas_y_redirige(self):
+        r = self.post(dict(EQUIPO_VALIDO, extra='x', id='99'))
+        self.assertEqual(r.status_code, 302)
+        self.assertIn('guardado=MED_0500', r.headers['Location'])
+        self.assertEqual(helpers.INVENTARIO_GUARDADO, [{
+            'id_equipo': 2, 'marca': 3, 'lote': 'L-1', 'serie': 'SN-500',
+            'serial_inventario_interno': 'MED_0500', 'invima': 'INVIMA-2024-1', 'id_cliente': 7, 'riesgo': 'IIA'}])
+        self.assertIn('Equipo MED_0500 guardado', self.c.get(r.headers['Location']).get_data(as_text=True))
+
+    def test_sin_csrf(self):
+        self.assertEqual(self.post({k: v for k, v in EQUIPO_VALIDO.items() if k != 'csrf_token'}).status_code, 400)
+        self.assertEqual(helpers.INVENTARIO_GUARDADO, [])
+
+    def test_validaciones_conservan_lo_escrito(self):
+        casos = {'sin serie': dict(EQUIPO_VALIDO, serie='  '), 'marca inexistente': dict(EQUIPO_VALIDO, marca='999'),
+                 'cliente no numérico': dict(EQUIPO_VALIDO, cliente='7 OR 1=1'),
+                 'riesgo libre': dict(EQUIPO_VALIDO, riesgo='Altísimo'), 'invima largo': dict(EQUIPO_VALIDO, invima='x' * 101)}
+        for nombre, datos in casos.items():
+            with self.subTest(nombre):
+                r = self.post(datos)
+                self.assertEqual(r.status_code, 400)
+                self.assertIn('alert-error', r.get_data(as_text=True))
+                self.assertIn('value="L-1"', r.get_data(as_text=True))
+        self.assertEqual(helpers.INVENTARIO_GUARDADO, [])
+
+    def test_serie_duplicada(self):
+        self.post(EQUIPO_VALIDO)
+        r = self.post(dict(EQUIPO_VALIDO, interno='MED_0501'))                  # misma serie
+        self.assertEqual(r.status_code, 409)
+        self.assertIn('Ya existe un equipo con esa serie.', r.get_data(as_text=True))
+        # otra serie: se guarda
+        self.assertEqual(self.post(dict(EQUIPO_VALIDO, serie='SN-502', interno='MED_0502')).status_code, 302)
+
+    def test_duplicado_no_reconocido_da_mensaje_generico(self):
+        original = helpers.fake.guardar_inventario
+        helpers.fake.guardar_inventario = lambda d: (_ for _ in ()).throw(helpers.InventarioDuplicado(None))
+        try:
+            r = self.post(EQUIPO_VALIDO)
+        finally:
+            helpers.fake.guardar_inventario = original
+        self.assertEqual(r.status_code, 409)
+        self.assertIn('valor repetido', r.get_data(as_text=True))
+
+    def test_error_de_base_no_se_muestra(self):
+        original = helpers.fake.guardar_inventario
+        helpers.fake.guardar_inventario = lambda d: (_ for _ in ()).throw(RuntimeError('password=SECRETO'))
+        try:
+            r = self.post(EQUIPO_VALIDO)
+        finally:
+            helpers.fake.guardar_inventario = original
+        self.assertEqual(r.status_code, 500)
+        self.assertNotIn('SECRETO', r.get_data(as_text=True))
+
+
+ENCABEZADO_EXCEL = ['Tipo de equipo', 'Marca', 'Serie', 'Lote', 'Serial de inventario interno',
+                    'Cliente', 'Riesgo', 'INVIMA']
+
+
+def excel(filas, encabezado=ENCABEZADO_EXCEL):
+    import openpyxl
+    libro = openpyxl.Workbook()
+    hoja = libro.active
+    hoja.append(encabezado)
+    for fila in filas:
+        hoja.append(fila)
+    salida = io.BytesIO()
+    libro.save(salida)
+    return salida.getvalue()
+
+
+def zip_con(entradas):
+    import zipfile
+    salida = io.BytesIO()
+    with zipfile.ZipFile(salida, 'w', zipfile.ZIP_DEFLATED) as z:
+        for nombre, datos in entradas.items():
+            z.writestr(nombre, datos)
+    return salida.getvalue()
+
+
+class CargaExcel(unittest.TestCase):
+    def setUp(self):
+        helpers.reiniciar()
+        self.c = cliente_sesion()
+
+    def subir(self, contenido, nombre='inventario.xlsx', csrf=True):
+        datos = {'archivo_excel': (io.BytesIO(contenido), nombre)}
+        if csrf:
+            datos['csrf_token'] = 'token-de-prueba'
+        return self.c.post('/comercial/procesar_excel', data=datos, content_type='multipart/form-data')
+
+    def test_pagina(self):
+        html = self.c.get('/comercial/cargar_excel').get_data(as_text=True)
+        self.assertIn('Serial de inventario interno', html)
+        self.assertIn('accept=".xlsx', html)
+
+    def test_guarda_filas_validas_por_nombre(self):
+        r = self.subir(excel([
+            ['BOMBA DE INFUSION', 'b. braun', 'SN-1', 'L-1', 'MED_1', 'otro', 'iia', 'INV-1'],   # mayúsculas/tildes
+            ['Bomba de infusión', 'B. Braun', 12345.0, 'L-2', 'MED_2', 'Clínica <Norte> & Cía', 'I', 'INV-2'],
+        ]))
+        self.assertEqual(r.status_code, 200)
+        self.assertIn('2 equipos guardados', r.get_data(as_text=True))
+        primero, segundo = helpers.INVENTARIO_GUARDADO
+        self.assertEqual((primero['id_equipo'], primero['marca'], primero['id_cliente'], primero['riesgo']),
+                         (2, 3, 3, 'IIA'))
+        self.assertEqual((segundo['serie'], segundo['id_cliente']), ('12345', 7))     # 12345.0 -> '12345'
+
+    def test_encabezados_en_otro_orden(self):
+        orden = ['INVIMA', 'Serie', 'Marca', 'Tipo de equipo', 'Lote', 'Cliente', 'Riesgo', 'Serial interno']
+        r = self.subir(excel([['INV-9', 'SN-9', 'B. Braun', 'Bomba de infusión', 'L', 'Otro', 'III', 'MED_9']], orden))
+        self.assertIn('1 equipo guardado', r.get_data(as_text=True))
+
+    def test_errores_por_fila_no_detienen_las_demas(self):
+        r = self.subir(excel([
+            ['Bomba de infusión', 'Marca inexistente', 'SN-1', 'L', 'MED_1', 'Otro', 'I', 'INV-1'],
+            ['Bomba de infusión', 'B. Braun', 'SN-2', 'L', 'MED_2', 'Otro', 'I', 'INV-2'],
+            ['Bomba de infusión', 'B. Braun', 'SN-2', 'L', 'MED_3', 'Otro', 'I', 'INV-3'],          # serie repetida
+            ['Bomba de infusión', 'B. Braun', '=HYPERLINK("http://x")', 'L', 'MED_4', 'Otro', 'I', 'INV-4'],  # fórmula: llega vacía
+            ['Bomba de infusión', 'B. Braun', 'SN-41', 'L', 'MED_41', 'Otro', 'I', '@SUM(1)'],      # texto tipo fórmula
+            [None] * 8,                                                                           # vacía: se ignora
+            ['Bomba de infusión', 'B. Braun', 'SN-5', '', 'MED_5', 'Otro', 'I', 'INV-5'],            # falta lote
+            ['Bomba de infusión', 'B. Braun', 'SN-6', 'L', 'MED_6', '<script>x</script>', 'I', 'INV-6'],
+        ]))
+        html = r.get_data(as_text=True)
+        self.assertIn('1 equipo guardado', html)
+        self.assertIn('6 filas con error', html)
+        self.assertIn('Marca «Marca inexistente» no existe', html)
+        self.assertIn('Ya existe un equipo con esa serie.', html)
+        self.assertIn('<tr><td>5</td><td>Falta la serie.</td></tr>', html)   # la fórmula no se ejecuta ni se guarda
+        self.assertIn('parece una fórmula', html)
+        self.assertIn('Falta el lote', html)
+        self.assertIn('&lt;script&gt;', html)                       # escapado
+        self.assertIn('<td>9</td>', html)                            # número real de la fila en Excel
+        self.assertEqual([e['serie'] for e in helpers.INVENTARIO_GUARDADO], ['SN-2'])
+
+    def test_nombre_repetido_en_catalogo_usa_el_id_menor(self):
+        original = helpers.fake.marcas
+        helpers.fake.marcas = lambda: [(3, 'B. Braun'), (20, 'ABBOTT'), (7, 'Abbott')]
+        try:
+            r = self.subir(excel([['Bomba de infusión', 'Abbott', 'SN-1', 'L', 'MED_1', 'Otro', 'I', 'INV-1']]))
+        finally:
+            helpers.fake.marcas = original
+        self.assertIn('1 equipo guardado', r.get_data(as_text=True))
+        self.assertEqual(helpers.INVENTARIO_GUARDADO[0]['marca'], 7)
+
+    def test_solo_la_serie_repetida_es_error(self):
+        mismo = ['Bomba de infusión', 'B. Braun', None, 'LOTE-A', 'MED_X', 'Otro', 'IIA', 'INV-MISMO']
+        r = self.subir(excel([mismo[:2] + ['SN-1'] + mismo[3:],      # lote, serial interno e INVIMA iguales
+                              mismo[:2] + ['SN-2'] + mismo[3:],
+                              mismo[:2] + ['SN-1'] + mismo[3:]]))     # solo esta repite la serie
+        html = r.get_data(as_text=True)
+        self.assertIn('2 equipos guardados', html)
+        self.assertIn('<tr><td>4</td><td>Ya existe un equipo con esa serie.</td></tr>', html)
+
+    def test_archivos_rechazados(self):
+        casos = {
+            'sin csrf': (excel([]), 'a.xlsx', False, None),
+            'extensión xls': (excel([]), 'a.xls', True, 'formato .xlsx'),
+            'texto renombrado': (b'serie;lote\nSN;L', 'a.xlsx', True, 'no es un Excel'),
+            'falta columna': (excel([['x']], ['Tipo de equipo', 'Marca']), 'a.xlsx', True, 'Faltan estas columnas'),
+            'sin filas': (excel([]), 'a.xlsx', True, 'no tiene filas'),
+            'bomba zip': (zip_con({'xl/a.xml': b'0' * (21 * 1024 * 1024)}), 'a.xlsx', True, 'demasiado grande'),
+            'macros': (zip_con({'xl/vbaProject.bin': b'x'}), 'a.xlsx', True, 'contiene macros'),
+            'zip que no es excel': (zip_con({'hola.txt': b'x'}), 'a.xlsx', True, 'no es un Excel'),
+        }
+        for nombre, (contenido, archivo, csrf, mensaje) in casos.items():
+            with self.subTest(nombre):
+                r = self.subir(contenido, archivo, csrf)
+                self.assertEqual(r.status_code, 400)
+                if mensaje:
+                    self.assertIn(mensaje, r.get_data(as_text=True))
+        self.assertEqual(helpers.INVENTARIO_GUARDADO, [])
+
+    def test_bomba_xml_bloqueada(self):
+        import zipfile
+        bomba = ('<?xml version="1.0"?><!DOCTYPE l [<!ENTITY a "aaaaaaaaaa">'
+                 '<!ENTITY b "&a;&a;&a;&a;&a;&a;&a;&a;&a;&a;">]>')
+        original = zipfile.ZipFile(io.BytesIO(excel([['Bomba de infusión', 'B. Braun', 'S', 'L', 'M', 'Otro', 'I', 'V']])))
+        entradas = {}
+        for nombre in original.namelist():
+            datos = original.read(nombre)
+            if nombre == 'xl/worksheets/sheet1.xml':
+                texto = datos.decode('utf-8')
+                if texto.startswith('<?xml'):
+                    texto = texto[texto.index('?>') + 2:]
+                datos = (bomba + texto).encode('utf-8')
+            entradas[nombre] = datos
+        r = self.subir(zip_con(entradas))
+        self.assertEqual(r.status_code, 400)
+        self.assertEqual(helpers.INVENTARIO_GUARDADO, [])
+
+    def test_limite_de_filas(self):
+        filas = [['Bomba de infusión', 'B. Braun', f'S{i}', 'L', f'M{i}', 'Otro', 'I', f'V{i}'] for i in range(1001)]
+        r = self.subir(excel(filas))
+        self.assertEqual(r.status_code, 400)
+        self.assertIn('máximo de 1000 filas', r.get_data(as_text=True))
+
+
 if __name__ == '__main__':
     unittest.main()

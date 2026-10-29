@@ -7,10 +7,13 @@ import os
 import re
 import secrets
 import time
+import unicodedata
+import zipfile
 from collections import defaultdict, deque
 from datetime import date, datetime, timedelta
 from functools import wraps
 
+import openpyxl
 from dotenv import load_dotenv
 from PIL import Image, ImageOps
 
@@ -650,6 +653,304 @@ def consultar_hv():
     paginas = max(1, -(-total // POR_PAGINA))
     return render_template('forms/hv_equipos/consultar_hoja_vida.html', hojas=hojas, q=texto,
                            total=total, pagina=pagina, paginas=paginas)
+
+
+# --------------------------------------------INVENTARIO--------------------------------------------
+@sisem.route('/comercial/inventario')
+@login_required
+def inventario():
+    return render_template('forms/comercial/inventario.html', inventario=db.inventario() or [])
+
+def _formulario_inventario(error=None, valores=None, guardado=None, codigo=200):
+    return render_template(
+        'forms/comercial/ingresar_inventario.html',
+        marcas=db.marcas() or [],
+        tipo_equipos=db.tipo_equipos() or [],
+        clientes=db.clientes() or [],
+        riesgos=db.riesgo_equipos() or [],
+        error=error, valores=valores or {}, guardado=guardado,
+    ), codigo
+
+
+@sisem.route('/comercial/ingresar_inventario')
+@login_required
+def ingresar_inventario():
+    return _formulario_inventario(guardado=request.args.get('guardado', '')[:120] or None)
+
+
+def _catalogos_inventario():
+    return {
+        'tipos': db.tipo_equipos() or [],
+        'marcas': db.marcas() or [],
+        'clientes': db.clientes() or [],
+        'riesgos': db.riesgo_equipos() or [],
+    }
+
+
+def _validar_inventario(form, catalogos=None):
+    """Devuelve ``(columnas, error)``: {columna de inventario: valor} solo con campos conocidos.
+
+    El token CSRF y cualquier campo extra del formulario se ignoran; los ids se comprueban
+    contra los catálogos de la base (``catalogos`` permite reutilizarlos en la carga por Excel).
+    """
+    if catalogos is None:
+        catalogos = _catalogos_inventario()
+
+    def texto(campo, maximo, nombre):
+        valor = (form.get(campo) or '').replace('\x00', '').strip()
+        if not valor:
+            raise ValueError(f"Falta {nombre}.")
+        if len(valor) > maximo:
+            raise ValueError(f"{nombre[0].upper() + nombre[1:]} admite máximo {maximo} caracteres.")
+        return valor
+
+    def id_de(campo, catalogo, nombre):
+        valor = (form.get(campo) or '').strip()
+        if not valor.isdigit() or int(valor) not in {fila[0] for fila in catalogo or []}:
+            raise ValueError(f"Selecciona {nombre}.")
+        return int(valor)
+
+    try:
+        riesgo = (form.get('riesgo') or '').strip()
+        if riesgo not in {fila[1] for fila in catalogos['riesgos']}:
+            raise ValueError("Selecciona la clasificación del riesgo.")
+        return {
+            'id_equipo': id_de('equipo', catalogos['tipos'], 'el tipo de equipo'),
+            'marca': id_de('marca', catalogos['marcas'], 'la marca'),
+            'lote': texto('lote', 120, 'el lote'),
+            'serie': texto('serie', 120, 'la serie'),
+            'serial_inventario_interno': texto('interno', 120, 'el serial de inventario interno'),
+            'invima': texto('invima', 100, 'el registro INVIMA'),
+            'id_cliente': id_de('cliente', catalogos['clientes'], 'el cliente'),
+            'riesgo': riesgo,
+        }, None
+    except ValueError as error:
+        return None, str(error)
+
+
+_INVENTARIO_REPETIDO = {
+    'serie': "Ya existe un equipo con esa serie.",
+}
+
+
+@sisem.route('/comercial/guardar_inventario', methods=['POST'])
+@login_required
+def guardar_inventario():
+    datos, problema = _validar_inventario(request.form)
+    if problema:
+        return _formulario_inventario(error=problema, valores=request.form, codigo=400)
+
+    try:
+        db.guardar_inventario(datos)
+    except db.InventarioDuplicado as duplicado:
+        mensaje = _INVENTARIO_REPETIDO.get(
+            duplicado.campo, "Ya existe un equipo con esos datos (valor repetido).")
+        return _formulario_inventario(error=mensaje, valores=request.form, codigo=409)
+    except Exception:
+        logger.exception("No se pudo guardar el inventario")
+        return _formulario_inventario(error="No se pudo guardar el equipo. Inténtalo de nuevo.",
+                                      valores=request.form, codigo=500)
+
+    # Post/Redirect/Get: recargar la página no vuelve a enviar el formulario.
+    return redirect(url_for('ingresar_inventario', guardado=datos['serial_inventario_interno']))
+
+# ----------------------------------------------------------------------------------------
+# Carga de inventario desde Excel (.xlsx)
+# ----------------------------------------------------------------------------------------
+# Encabezado (sin tildes ni mayúsculas) -> campo del formulario manual de inventario.
+_EXCEL_COLUMNAS = {
+    'tipo de equipo': 'equipo', 'equipo': 'equipo', 'marca': 'marca', 'serie': 'serie',
+    'lote': 'lote', 'serial de inventario interno': 'interno', 'serial interno': 'interno',
+    'cliente': 'cliente', 'riesgo': 'riesgo', 'clasificacion del riesgo': 'riesgo',
+    'invima': 'invima', 'registro invima': 'invima',
+}
+_EXCEL_ENCABEZADOS = {   # orden y nombres que se muestran en la página
+    'equipo': 'Tipo de equipo', 'marca': 'Marca', 'serie': 'Serie', 'lote': 'Lote',
+    'interno': 'Serial de inventario interno', 'cliente': 'Cliente', 'riesgo': 'Riesgo',
+    'invima': 'INVIMA',
+}
+_EXCEL_MAX_FILAS = 1000                        # filas con datos por archivo
+_EXCEL_MAX_DESCOMPRIMIDO = 20 * 1024 * 1024    # un .xlsx es un ZIP: tope al descomprimir
+_EXCEL_MAX_ENTRADAS_ZIP = 300
+_EXCEL_MAX_COLUMNAS = 30
+_EXCEL_ERRORES_VISIBLES = 50
+# Un texto que empieza así se ejecutaría como fórmula si los datos se exportan a Excel
+_EXCEL_PREFIJOS_FORMULA = ('=', '+', '@', '\t', '\r')
+
+
+class _ExcelInvalido(Exception):
+    """Problema con el archivo completo (formato, tamaño, encabezados). El mensaje es para el usuario."""
+
+
+def _normalizar(texto):
+    """'  Clínica  Norte ' -> 'clinica norte' (sin tildes, minúsculas, espacios simples)."""
+    sin_tildes = ''.join(c for c in unicodedata.normalize('NFD', str(texto))
+                         if unicodedata.category(c) != 'Mn')
+    return ' '.join(sin_tildes.lower().split())
+
+
+def _celda_texto(valor):
+    """Valor de una celda como texto: 12345.0 -> '12345'; vacío -> ''."""
+    if valor is None:
+        return ''
+    if isinstance(valor, float) and valor.is_integer():
+        valor = int(valor)
+    return str(valor).replace('\x00', '').strip()
+
+
+def _abrir_excel(archivo):
+    """Comprueba que sea un .xlsx real y razonable antes de dárselo a openpyxl.
+
+    * Firma ZIP (un .xlsx es un ZIP): rechaza archivos renombrados.
+    * Tamaño y número de entradas al descomprimir: evita "bombas ZIP" (archivos de pocos KB
+      que ocupan gigas en memoria).
+    * Sin macros (vbaProject).
+    openpyxl usa defusedxml (requirements.txt), que bloquea los ataques XML (entidades externas
+    y expansión de entidades). Solo modo lectura, sin fórmulas (valores calculados) ni vínculos.
+    """
+    contenido = archivo.read()          # máximo 1 MB por MAX_CONTENT_LENGTH
+    if not contenido.startswith(b'PK\x03\x04'):
+        raise _ExcelInvalido("El archivo no es un Excel .xlsx válido.")
+    try:
+        with zipfile.ZipFile(io.BytesIO(contenido)) as comprimido:
+            entradas = comprimido.infolist()
+            if (len(entradas) > _EXCEL_MAX_ENTRADAS_ZIP
+                    or sum(e.file_size for e in entradas) > _EXCEL_MAX_DESCOMPRIMIDO):
+                raise _ExcelInvalido("El archivo es demasiado grande. Divídelo en archivos más pequeños.")
+            if any(e.filename.lower().startswith('xl/vbaproject') for e in entradas):
+                raise _ExcelInvalido("El archivo contiene macros. Guárdalo como .xlsx sin macros.")
+        return openpyxl.load_workbook(io.BytesIO(contenido), read_only=True, data_only=True,
+                                      keep_links=False)
+    except _ExcelInvalido:
+        raise
+    except Exception:
+        logger.warning("Excel de inventario rechazado: no se pudo abrir", exc_info=True)
+        raise _ExcelInvalido("El archivo no es un Excel .xlsx válido.")
+
+
+def _leer_filas_excel(libro):
+    """[(número de fila, {campo: texto})] de la primera hoja, usando la fila 1 como encabezado."""
+    try:
+        filas = libro.worksheets[0].iter_rows(values_only=True, max_col=_EXCEL_MAX_COLUMNAS)
+        encabezado = next(filas, None) or ()
+        columnas = {}
+        for posicion, titulo in enumerate(encabezado):
+            campo = _EXCEL_COLUMNAS.get(_normalizar(_celda_texto(titulo)))
+            if campo and campo not in columnas.values():
+                columnas[posicion] = campo
+        faltan = [nombre for campo, nombre in _EXCEL_ENCABEZADOS.items() if campo not in columnas.values()]
+        if faltan:
+            raise _ExcelInvalido("Faltan estas columnas en la fila 1: " + ', '.join(faltan) + '.')
+
+        resultado = []
+        for numero, fila in enumerate(filas, start=2):
+            valores = {campo: _celda_texto(fila[i]) if i < len(fila) else ''
+                       for i, campo in columnas.items()}
+            if not any(valores.values()):
+                continue                                   # fila vacía
+            if len(resultado) >= _EXCEL_MAX_FILAS:
+                raise _ExcelInvalido(f"El archivo supera el máximo de {_EXCEL_MAX_FILAS} filas.")
+            resultado.append((numero, valores))
+    except _ExcelInvalido:
+        raise
+    except Exception:
+        logger.warning("Excel de inventario rechazado: no se pudo leer", exc_info=True)
+        raise _ExcelInvalido("No se pudo leer el archivo. Verifica que sea un Excel .xlsx válido.")
+    if not resultado:
+        raise _ExcelInvalido("El archivo no tiene filas con datos debajo del encabezado.")
+    return resultado
+
+
+def _indice_por_nombre(catalogo):
+    """{nombre normalizado: id}. Si el catálogo repite un nombre, se usa el id menor
+    (en tipo_equipo son los ids 1-16 que usan los formularios y PDF de mantenimiento)."""
+    indice = {}
+    for id_, nombre in catalogo:
+        clave = _normalizar(nombre)
+        indice[clave] = min(id_, indice.get(clave, id_))
+    return indice
+
+
+def _fila_excel_a_formulario(valores, indices):
+    """Convierte los nombres de la fila en los ids/valores que espera _validar_inventario."""
+    for campo, valor in valores.items():
+        if valor.startswith(_EXCEL_PREFIJOS_FORMULA):
+            raise ValueError(f"«{_EXCEL_ENCABEZADOS[campo]}» no puede empezar por =, +, @ (parece una fórmula).")
+
+    form = dict(valores)
+    for campo, indice in indices.items():
+        if not valores[campo]:
+            continue                                       # _validar_inventario dirá qué falta
+        clave = _normalizar(valores[campo])
+        nombre = _EXCEL_ENCABEZADOS[campo]
+        if clave not in indice:
+            raise ValueError(f"{nombre} «{valores[campo][:60]}» no existe en el sistema.")
+        form[campo] = str(indice[clave])
+    return form
+
+
+def _pagina_excel(error=None, resultado=None, codigo=200):
+    return render_template('forms/comercial/cargar_excel.html', error=error, resultado=resultado,
+                           columnas=list(_EXCEL_ENCABEZADOS.values()), max_filas=_EXCEL_MAX_FILAS), codigo
+
+
+@sisem.route('/comercial/cargar_excel')
+@login_required
+def cargar_excel():
+    return _pagina_excel()
+
+
+@sisem.route('/comercial/procesar_excel', methods=['POST'])
+@login_required
+def procesar_excel():
+    """Valida y guarda cada fila por separado: una fila con error no detiene las demás."""
+    archivo = request.files.get('archivo_excel')
+    if not archivo or not archivo.filename:
+        return _pagina_excel(error="Selecciona un archivo de Excel (.xlsx).", codigo=400)
+    if not archivo.filename.lower().endswith('.xlsx'):
+        return _pagina_excel(error="El archivo debe ser de Excel en formato .xlsx.", codigo=400)
+
+    try:
+        libro = _abrir_excel(archivo)
+        try:
+            filas = _leer_filas_excel(libro)
+        finally:
+            libro.close()
+    except _ExcelInvalido as error:
+        return _pagina_excel(error=str(error), codigo=400)
+
+    catalogos = _catalogos_inventario()
+    indices = {
+        'equipo': _indice_por_nombre(catalogos['tipos']),
+        'marca': _indice_por_nombre(catalogos['marcas']),
+        'cliente': _indice_por_nombre(catalogos['clientes']),
+    }
+    riesgos = {_normalizar(nombre): nombre for _, nombre in catalogos['riesgos']}
+
+    guardadas, errores = 0, []
+    for numero, valores in filas:
+        try:
+            form = _fila_excel_a_formulario(valores, indices)
+            form['riesgo'] = riesgos.get(_normalizar(valores['riesgo']), valores['riesgo'])
+            datos, problema = _validar_inventario(form, catalogos)
+            if problema:
+                raise ValueError(problema)
+            db.guardar_inventario(datos)
+            guardadas += 1
+        except ValueError as error:
+            errores.append((numero, str(error)))
+        except db.InventarioDuplicado as duplicado:      # la serie ya existe (único UNIQUE de inventario)
+            errores.append((numero, _INVENTARIO_REPETIDO.get(duplicado.campo, "Valor repetido.")))
+        except Exception:
+            logger.exception("No se pudo guardar la fila %s del Excel de inventario", numero)
+            errores.append((numero, "No se pudo guardar. Inténtalo de nuevo."))
+
+    logger.info("Carga de inventario por Excel: %s filas guardadas, %s con error", guardadas, len(errores))
+    return _pagina_excel(resultado={
+        'guardadas': guardadas,
+        'total_errores': len(errores),
+        'errores': errores[:_EXCEL_ERRORES_VISIBLES],
+    })
 
 
 if __name__ == '__main__':

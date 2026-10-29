@@ -155,7 +155,7 @@ def _items(data, definiciones, inicio=1):
     for n, (texto, clave) in enumerate(definiciones, start=inicio):
         valor = _legible(data.get(clave, ''))
         filas.append({'n': n, 'texto': texto, 'valor': valor,
-                      'incumple': valor.lower() == 'no cumple'})
+                    'incumple': valor.lower() == 'no cumple'})
     return filas
 
 
@@ -263,7 +263,7 @@ def _secciones_genericas(tipo, data):
                 bruto = ''
             valor = campo['opciones'].get(_texto(bruto), _texto(bruto))
             filas.append({'texto': campo['label'], 'valor': valor,
-                          'incumple': valor.strip().lower() == 'no cumple'})
+                        'incumple': valor.strip().lower() == 'no cumple'})
         if filas:
             resultado.append({'titulo': seccion['titulo'], 'filas': filas})
     return resultado
@@ -296,7 +296,7 @@ def _cargar_reporte(reporte_id):
 def _contexto_comun(fila, data):
     repuestos = [
         {'cantidad': _texto(data.get(f'repuestos.cantidad_{i}', '')),
-         'descripcion': _texto(data.get(f'repuestos.descripcion_{i}', ''))}
+        'descripcion': _texto(data.get(f'repuestos.descripcion_{i}', ''))}
         for i in range(1, 6)
     ]
     return {
@@ -343,7 +343,7 @@ def _contexto_bomba(data, comun):
     ef, pf = error(flujo, PROGRAMADO_BOMBA['flujo'])
     porcentajes = [x for x in (pv, pt, pf) if x is not None]
     cumple = ('' if not porcentajes else
-              'Sí' if all(x <= TOLERANCIA_BOMBA_PCT for x in porcentajes) else 'No')
+            'Sí' if all(x <= TOLERANCIA_BOMBA_PCT for x in porcentajes) else 'No')
 
     inspeccion = _items(data, [
         ('Efectuar limpieza interna y externa del equipo.', 'servicio.limpieza'),
@@ -392,7 +392,7 @@ def _contexto_concentrador(data, comun):
         ('Verificación de cable AC.', 'verificación de cable A.C.'),
         ('Verificación de batería.', 'verificación de bateria.'),
         ('Horas de funcionamiento de turbina y/o compresor.',
-         'Horas funcionamiento de turbina y/o compresor.'),
+        'Horas funcionamiento de turbina y/o compresor.'),
         ('Cambio de filtro de entrada de aire.', 'Cambio de filtro de entrada de aire.'),
         ('Porcentaje de concentración de oxígeno.', 'Porcentaje de concentración de oxígeno.'),
     ])
@@ -412,7 +412,7 @@ def _contexto_concentrador(data, comun):
             error_ = f"{diferencia:+.1f}"
             estado = 'Cumple' if abs(diferencia) <= TOLERANCIA_FLUJO_LPM else 'No cumple'
         flujos.append({'programado': programado, 'medido': _texto(bruto).strip(),
-                       'error': error_, 'estado': estado, 'incumple': estado == 'No cumple'})
+                    'error': error_, 'estado': estado, 'incumple': estado == 'No cumple'})
 
     o2_bruto = data.get('concentrador.o2_medido', '')
     o2 = _num(o2_bruto)
@@ -424,7 +424,7 @@ def _contexto_concentrador(data, comun):
         'flujos': flujos,
         'tolerancia_flujo': TOLERANCIA_FLUJO_LPM,
         'o2': {'medido': _texto(o2_bruto).strip(), 'estado': o2_estado,
-               'incumple': o2_estado == 'No cumple', 'minimo': MINIMO_O2_PCT},
+            'incumple': o2_estado == 'No cumple', 'minimo': MINIMO_O2_PCT},
     }
 
 

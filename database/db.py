@@ -15,7 +15,7 @@ import os
 from contextlib import contextmanager
 
 from dotenv import load_dotenv
-from psycopg import sql
+from psycopg import errors, sql
 from psycopg.rows import dict_row
 from psycopg_pool import ConnectionPool
 
@@ -101,6 +101,22 @@ def clientes():
 
 def tipo_equipos():
     return _leer_catalogo("SELECT id, equipo FROM tipo_equipo ORDER BY id;")
+
+def inventario():
+    """Equipos del inventario con los nombres de tipo, marca y cliente (diccionarios)."""
+    return _leer_catalogo(
+        "SELECT i.id, te.equipo AS tipo_equipo, m.brand AS marca, i.lote, i.serie, "
+        "       i.serial_inventario_interno, c.nombre AS cliente, i.riesgo, i.invima "
+        "FROM inventario i "
+        "LEFT JOIN tipo_equipo te ON te.id = i.id_equipo "
+        "LEFT JOIN marcas m ON m.id = i.marca "
+        "LEFT JOIN clientes c ON c.id = i.id_cliente "
+        "ORDER BY i.serial_inventario_interno;",
+        como_dict=True,
+    )
+
+def riesgo_equipos():
+    return _leer_catalogo("SELECT id_riesgo, tipo_riesgo FROM riesgo ORDER BY id_riesgo;")
 
 
 # -----------------------------------------------------------------------------------------
@@ -267,3 +283,42 @@ def contar_reportes(desde_fecha=None):
     except Exception:
         logger.exception("Error contando reportes")
         return None
+
+# ----------------------------------------INVENTARIO-------------------------------------------------
+
+class InventarioDuplicado(Exception):
+    """Ya existe un equipo con un valor que debe ser único. ``campo`` dice cuál
+    ('serie', 'serial_inventario_interno', 'invima') o None si no se reconoce."""
+
+    def __init__(self, campo=None):
+        super().__init__(campo)
+        self.campo = campo
+
+
+# Restricción UNIQUE de PostgreSQL (nombre real en la base) -> campo repetido
+_UNICOS_INVENTARIO = {
+    'unico_serie': 'serie',
+}
+
+
+def guardar_inventario(datos):
+    """Guarda un nuevo equipo en el inventario y devuelve el id nuevo.
+
+    ``datos``: {columna de inventario: valor}. Las columnas salen de una lista fija
+    validada en app.py; aun así se escapan como identificadores SQL.
+    Lanza ``InventarioDuplicado`` (con el campo repetido) si choca con un UNIQUE.
+    """
+    insertar = sql.SQL(
+        "INSERT INTO inventario ({columnas}) VALUES ({valores}) RETURNING id;"
+    ).format(columnas=sql.SQL(', ').join(map(sql.Identifier, datos)),
+        valores=sql.SQL(', ').join(sql.Placeholder() * len(datos)),
+    )
+    try:
+        with _cursor() as cursor:
+            cursor.execute(insertar, list(datos.values()))
+            nuevo_id = cursor.fetchone()[0]
+    except errors.UniqueViolation as error:
+        restriccion = getattr(error.diag, 'constraint_name', None)
+        raise InventarioDuplicado(_UNICOS_INVENTARIO.get(restriccion)) from error
+    logger.info("Inventario guardado con id %s", nuevo_id)
+    return nuevo_id

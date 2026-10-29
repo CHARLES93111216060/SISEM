@@ -31,6 +31,7 @@ REPORTES = {}
 def reiniciar():
     REPORTES.clear()
     HOJAS.clear()
+    INVENTARIO_GUARDADO.clear()
 
 
 def guardar(reporte_id, equipo, datos, tecnico=1, cliente=7, fecha='2026-10-14'):
@@ -117,6 +118,32 @@ def _buscar_hojas(texto=''):
                           'fecha_creacion': '2026-10-23 09:15:00'})
     return filas
 
+
+# --- inventario -------------------------------------------------------------------------------
+INVENTARIO_GUARDADO = []
+
+
+class InventarioDuplicado(Exception):
+    def __init__(self, campo=None):
+        super().__init__(campo)
+        self.campo = campo
+
+
+def _guardar_inventario(datos):
+    """Imita el UNIQUE de la tabla: solo la serie."""
+    for campo in ('serie',):
+        if any(e[campo] == datos[campo] for e in INVENTARIO_GUARDADO):
+            raise InventarioDuplicado(campo)
+    INVENTARIO_GUARDADO.append(datos)
+    return len(INVENTARIO_GUARDADO)
+
+
+fake.InventarioDuplicado = InventarioDuplicado
+fake.guardar_inventario = _guardar_inventario
+fake.inventario = lambda: [
+    {'id': 1, 'tipo_equipo': 'Monitor', 'marca': None, 'lote': 'L-9', 'serie': 'SN-9',
+     'serial_inventario_interno': 'MED_0009', 'cliente': 'Clínica <Norte> & Cía', 'riesgo': 'IIB', 'invima': 'INV-9'}]
+fake.riesgo_equipos = lambda: [(1, 'I'), (2, 'IIA'), (3, 'IIB'), (4, 'III')]
 
 fake.buscar_hojas_vida = lambda texto='', limite=20, desplazamiento=0: \
     _buscar_hojas(texto)[desplazamiento:desplazamiento + limite]

@@ -1,0 +1,104 @@
+{% extends 'layout/base.html' %}
+
+{% block title %}Ingresar inventario{% endblock %}
+
+{% block content %}
+<div class="dashboard-shell">
+    <section class="page-hero">
+        <div>
+            <span class="eyebrow">Módulo comercial</span>
+            <h2>Ingresar inventario</h2>
+            <p>Registra un nuevo equipo en el inventario.</p>
+        </div>
+        <div class="hero-actions">
+            <a class="btn btn-secondary" href="{{ url_for('inventario') }}">Volver al inventario</a>
+            <a class="btn btn-secondary" href="{{ url_for('cargar_excel') }}">Cargar inventario en Excel</a>
+        </div>
+    </section>
+
+    <div class="page-panel">
+        {% if guardado %}
+        <div class="alert alert-ok" role="status">Equipo {{ guardado }} guardado en el inventario.</div>
+        {% endif %}
+        {% if error %}
+        <div class="alert alert-error" role="alert">{{ error }}</div>
+        {% endif %}
+
+        <!-- Los catálogos llegan como tuplas (id, nombre): por eso se usa [0] y [1], no .id / .nombre.
+             Si el guardado falla, "valores" trae lo que se escribió para no perderlo. -->
+        <form action="{{ url_for('guardar_inventario') }}" method="POST" autocomplete="off">
+            <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+
+            <h3 class="hv-titulo">Datos del equipo</h3>
+            <div class="hv-grid">
+                <div class="mb-3">
+                    <label class="form-label" for="equipo">Tipo de equipo</label>
+                    <select class="form-control" id="equipo" name="equipo" required>
+                        <option value="">-- Seleccione --</option>
+                        {% for tipo in tipo_equipos %}
+                        <option value="{{ tipo[0] }}" {{ 'selected' if valores.get('equipo') == tipo[0]|string }}>{{ tipo[1] }}</option>
+                        {% endfor %}
+                    </select>
+                </div>
+                <div class="mb-3">
+                    <label class="form-label" for="marca">Marca</label>
+                    <select class="form-control" id="marca" name="marca" required>
+                        <option value="">-- Seleccione --</option>
+                        {% for marca in marcas %}
+                        <option value="{{ marca[0] }}" {{ 'selected' if valores.get('marca') == marca[0]|string }}>{{ marca[1] }}</option>
+                        {% endfor %}
+                    </select>
+                </div>
+                <div class="mb-3">
+                    <label class="form-label" for="serie">Serie</label>
+                    <input type="text" class="form-control" id="serie" name="serie" maxlength="120"
+                           value="{{ valores.get('serie', '') }}" required>
+                </div>
+                <div class="mb-3">
+                    <label class="form-label" for="lote">Lote</label>
+                    <input type="text" class="form-control" id="lote" name="lote" maxlength="120"
+                           value="{{ valores.get('lote', '') }}" required>
+                </div>
+                <div class="mb-3">
+                    <label class="form-label" for="interno">Serial de inventario interno</label>
+                    <input type="text" class="form-control" id="interno" name="interno" maxlength="120"
+                           placeholder="MED_0000" value="{{ valores.get('interno', '') }}" required>
+                </div>
+                <div class="mb-3">
+                    <label class="form-label" for="invima">Registro INVIMA</label>
+                    <input type="text" class="form-control" id="invima" name="invima" maxlength="100"
+                           value="{{ valores.get('invima', '') }}" required>
+                </div>
+            </div>
+
+            <h3 class="hv-titulo">Ubicación y clasificación</h3>
+            <div class="hv-grid">
+                <div class="mb-3">
+                    <label class="form-label" for="cliente">Cliente</label>
+                    <select class="form-control" id="cliente" name="cliente" required>
+                        <option value="">-- Seleccione --</option>
+                        {% for cliente in clientes %}
+                        <option value="{{ cliente[0] }}" {{ 'selected' if valores.get('cliente') == cliente[0]|string }}>{{ cliente[1] }}</option>
+                        {% endfor %}
+                    </select>
+                </div>
+                <div class="mb-3">
+                    <label class="form-label" for="riesgo">Clasificación del riesgo</label>
+                    <!-- inventario.riesgo es texto ('I', 'IIA'…), por eso el valor es el nombre y no el id -->
+                    <select class="form-control" id="riesgo" name="riesgo" required>
+                        <option value="">-- Seleccione --</option>
+                        {% for riesgo in riesgos %}
+                        <option value="{{ riesgo[1] }}" {{ 'selected' if valores.get('riesgo') == riesgo[1] }}>{{ riesgo[1] }}</option>
+                        {% endfor %}
+                    </select>
+                </div>
+            </div>
+
+            <div class="mt-4 hv-acciones">
+                <button type="submit" class="btn btn-primary">Guardar item en el inventario</button>
+                <a class="btn btn-secondary" href="{{ url_for('inventario') }}">Cancelar</a>
+            </div>
+        </form>
+    </div>
+</div>
+{% endblock %}

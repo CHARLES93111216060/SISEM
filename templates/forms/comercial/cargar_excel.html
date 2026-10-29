@@ -1,0 +1,64 @@
+{% extends 'layout/base.html' %}
+
+{% block title %}Cargar inventario en Excel{% endblock %}
+
+{% block content %}
+<div class="dashboard-shell">
+    <section class="page-hero">
+        <div>
+            <span class="eyebrow">Módulo comercial</span>
+            <h2>Cargar inventario en Excel</h2>
+            <p>Sube un archivo Excel (.xlsx) con los equipos a registrar en el inventario.</p>
+        </div>
+        <div class="hero-actions">
+            <a class="btn btn-secondary" href="{{ url_for('inventario') }}">Volver al inventario</a>
+            <a class="btn btn-secondary" href="{{ url_for('ingresar_inventario') }}">Ingresar inventario manualmente</a>
+        </div>
+    </section>
+
+    <div class="page-panel">
+        {% if error %}
+        <div class="alert alert-error" role="alert">{{ error }}</div>
+        {% endif %}
+
+        {% if resultado %}
+        <div class="alert {{ 'alert-ok' if not resultado.total_errores else ('alert-info' if resultado.guardadas else 'alert-error') }}" role="status">
+            {{ resultado.guardadas }} {{ 'equipo guardado' if resultado.guardadas == 1 else 'equipos guardados' }}{% if resultado.total_errores %},
+            {{ resultado.total_errores }} {{ 'fila con error' if resultado.total_errores == 1 else 'filas con error' }}{% endif %}.
+        </div>
+        {% if resultado.errores %}
+        <div class="table-responsive mb-3">
+            <table>
+                <thead><tr><th>Fila</th><th>Motivo</th></tr></thead>
+                <tbody>
+                    {% for fila, motivo in resultado.errores %}
+                    <tr><td>{{ fila }}</td><td>{{ motivo }}</td></tr>
+                    {% endfor %}
+                </tbody>
+            </table>
+        </div>
+        {% if resultado.total_errores > resultado.errores|length %}
+        <p>Se muestran los primeros {{ resultado.errores|length }} errores. Corrige el archivo y vuelve a cargar
+           solo las filas que fallaron (las demás ya quedaron guardadas).</p>
+        {% endif %}
+        {% endif %}
+        {% endif %}
+
+        <h3 class="hv-titulo">Formato del archivo</h3>
+        <p>La <strong>fila 1</strong> debe tener estos encabezados (en cualquier orden):
+           <strong>{{ columnas|join(', ') }}</strong>.</p>
+        <p>Escribe los nombres tal como aparecen en el sistema (tipo de equipo, marca, cliente y riesgo);
+           no importan las mayúsculas ni las tildes. Máximo {{ max_filas }} filas por archivo.</p>
+
+        <form action="{{ url_for('procesar_excel') }}" method="POST" enctype="multipart/form-data" autocomplete="off">
+            <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+            <div class="mb-3">
+                <label for="archivo_excel" class="form-label">Archivo Excel (.xlsx, máximo 1 MB)</label>
+                <input type="file" class="form-control" id="archivo_excel" name="archivo_excel"
+                       accept=".xlsx,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet" required>
+            </div>
+            <button type="submit" class="btn btn-primary">Cargar inventario</button>
+        </form>
+    </div>
+</div>
+{% endblock %}
