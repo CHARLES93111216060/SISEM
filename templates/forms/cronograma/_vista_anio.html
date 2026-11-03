@@ -1,0 +1,41 @@
+{# Formato clásico de cronograma: una fila por equipo y una columna por mes. Cada marca es el día programado. #}
+{% if matriz %}
+<div class="table-responsive">
+    <table class="crono-anio">
+        <thead>
+            <tr>
+                <th scope="col" class="crono-equipo">Equipo</th>
+                {% for nombre in meses %}
+                <th scope="col" class="{{ 'crono-mes-actual' if loop.index == hoy.month and anio == hoy.year }}">
+                    <a href="{{ url_for('cronograma', vista='mes', anio=anio, mes=loop.index, **filtros) }}"
+                       title="Ver {{ nombre }} {{ anio }}">{{ nombre[:3] }}</a>
+                </th>
+                {% endfor %}
+            </tr>
+        </thead>
+        <tbody>
+            {% for equipo in matriz %}
+            <tr>
+                <th scope="row" class="crono-equipo">
+                    <strong>{{ equipo.equipo or 'Equipo' }}</strong>
+                    <small>{{ equipo.inventario or '—' }} · {{ equipo.serie or '—' }}</small>
+                    <small>{{ equipo.cliente or '—' }}</small>
+                </th>
+                {% for numero in range(1, 13) %}
+                <td class="{{ 'crono-mes-actual' if numero == hoy.month and anio == hoy.year }}">
+                    {% for e in equipo.meses.get(numero, []) %}
+                    <a class="crono-marca crono-{{ e.estado_clase }}"
+                       title="{{ e.fecha_texto }} · {{ e.estado_nombre }} · {{ e.tipo or '' }}"
+                       aria-label="{{ e.fecha_texto }}, {{ e.estado_nombre }}"
+                       href="{{ url_for('detalle_cronograma', cronograma_id=e.id) }}">{{ e.fecha_programada.day }}</a>
+                    {% endfor %}
+                </td>
+                {% endfor %}
+            </tr>
+            {% endfor %}
+        </tbody>
+    </table>
+</div>
+{% else %}
+<p class="vacio">No hay mantenimientos en {{ anio }}{{ ' con esos filtros' if filtros }}.</p>
+{% endif %}

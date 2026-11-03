@@ -1,0 +1,108 @@
+{% extends "layout/base.html" %}
+{% block title %}Cronograma de mantenimiento{% endblock %}
+
+{% block content %}
+<div class="dashboard-shell">
+    <section class="page-hero">
+        <div>
+            <span class="eyebrow">Módulo de mantenimiento</span>
+            <h2>Cronograma de mantenimiento</h2>
+            <p>Planea los mantenimientos de cada equipo y haz seguimiento a su estado.</p>
+        </div>
+        <div class="hero-actions">
+            <a class="btn btn-primary" href="{{ url_for('programar_mantenimiento') }}">Programar mantenimiento</a>
+        </div>
+    </section>
+
+    {% if aviso == 'creado' %}
+    <div class="alert alert-ok" role="status">
+        {{ creados or 0 }} {{ 'fecha programada' if creados == 1 else 'fechas programadas' }}{% if omitidos %};
+        {{ omitidos }} ya {{ 'existía' if omitidos == 1 else 'existían' }} y no se {{ 'duplicó' if omitidos == 1 else 'duplicaron' }}{% endif %}.
+    </div>
+    {% elif aviso == 'actualizado' %}
+    <div class="alert alert-ok" role="status">Mantenimiento actualizado.</div>
+    {% endif %}
+
+    <!-- Resumen del periodo que se está viendo -->
+    <div class="dashboard-cards">
+        <div class="card"><h3>Programados</h3><p>{{ resumen.total }}</p></div>
+        <div class="card"><h3>Pendientes</h3><p>{{ resumen.pendientes }}</p></div>
+        <div class="card"><h3>Vencidos</h3><p>{{ resumen.vencidos }}</p></div>
+        <div class="card"><h3>Realizados</h3><p>{{ resumen.realizados }}</p></div>
+    </div>
+
+    <div class="page-panel">
+        <!-- Vista, navegación y filtros: son enlaces y un formulario GET, no necesitan JavaScript -->
+        <div class="crono-barra">
+            <nav class="crono-vistas" aria-label="Vista del cronograma">
+                <a class="btn btn-sm {{ 'btn-primary' if vista == 'mes' else 'btn-secondary' }}"
+                   {% if vista == 'mes' %}aria-current="page"{% endif %}
+                   href="{{ url_for('cronograma', vista='mes', anio=anio, mes=mes, **filtros) }}">Mes</a>
+                <a class="btn btn-sm {{ 'btn-primary' if vista == 'anio' else 'btn-secondary' }}"
+                   {% if vista == 'anio' %}aria-current="page"{% endif %}
+                   href="{{ url_for('cronograma', vista='anio', anio=anio, mes=mes, **filtros) }}">Año</a>
+            </nav>
+            <nav class="crono-periodo" aria-label="Cambiar periodo">
+                <a class="btn btn-secondary btn-sm" aria-label="Periodo anterior"
+                   href="{{ url_for('cronograma', vista=vista, anio=anterior.anio, mes=anterior.mes, **filtros) }}">←</a>
+                <h3>{{ titulo_periodo }}</h3>
+                <a class="btn btn-secondary btn-sm" aria-label="Periodo siguiente"
+                   href="{{ url_for('cronograma', vista=vista, anio=siguiente.anio, mes=siguiente.mes, **filtros) }}">→</a>
+                <a class="btn btn-secondary btn-sm" href="{{ url_for('cronograma', vista=vista, **filtros) }}">Hoy</a>
+            </nav>
+        </div>
+
+        <form class="crono-filtros" method="get" action="{{ url_for('cronograma') }}">
+            <input type="hidden" name="vista" value="{{ vista }}">
+            <input type="hidden" name="anio" value="{{ anio }}">
+            <input type="hidden" name="mes" value="{{ mes }}">
+            <div>
+                <label class="form-label" for="f-estado">Estado</label>
+                <select class="form-control" id="f-estado" name="estado">
+                    <option value="">Todos</option>
+                    {% for clave, nombre in estados.items() %}
+                    <option value="{{ clave }}" {{ 'selected' if estado == clave }}>{{ nombre }}</option>
+                    {% endfor %}
+                    <option value="vencido" {{ 'selected' if estado == 'vencido' }}>Vencido</option>
+                </select>
+            </div>
+            <div>
+                <label class="form-label" for="f-tecnico">Técnico</label>
+                <select class="form-control" id="f-tecnico" name="tecnico">
+                    <option value="">Todos</option>
+                    {% for t in tecnicos %}
+                    <option value="{{ t[0] }}" {{ 'selected' if id_tecnico == t[0] }}>{{ t[1] }}</option>
+                    {% endfor %}
+                </select>
+            </div>
+            <div>
+                <label class="form-label" for="f-cliente">Cliente</label>
+                <select class="form-control" id="f-cliente" name="cliente">
+                    <option value="">Todos</option>
+                    {% for c in clientes %}
+                    <option value="{{ c[0] }}" {{ 'selected' if id_cliente == c[0] }}>{{ c[1] }}</option>
+                    {% endfor %}
+                </select>
+            </div>
+            <div class="crono-filtros-acciones">
+                <button type="submit" class="btn btn-primary btn-sm">Filtrar</button>
+                {% if filtros %}<a class="btn btn-secondary btn-sm" href="{{ url_for('cronograma', vista=vista, anio=anio, mes=mes) }}">Limpiar</a>{% endif %}
+            </div>
+        </form>
+
+        <ul class="crono-leyenda" aria-label="Significado de los colores">
+            <li><span class="crono-punto crono-pendiente"></span>Pendiente</li>
+            <li><span class="crono-punto crono-vencido"></span>Vencido</li>
+            <li><span class="crono-punto crono-en_proceso"></span>En proceso</li>
+            <li><span class="crono-punto crono-realizado"></span>Realizado</li>
+            <li><span class="crono-punto crono-cancelado"></span>Cancelado</li>
+        </ul>
+
+        {% if vista == 'mes' %}
+            {% include 'forms/cronograma/_vista_mes.html' %}
+        {% else %}
+            {% include 'forms/cronograma/_vista_anio.html' %}
+        {% endif %}
+    </div>
+</div>
+{% endblock %}

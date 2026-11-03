@@ -1,0 +1,71 @@
+{% extends "layout/base.html" %}
+{% block title %}Mantenimiento programado{% endblock %}
+
+{% block content %}
+<div class="dashboard-shell">
+    <section class="page-hero">
+        <div>
+            <span class="eyebrow">Cronograma de mantenimiento</span>
+            <h2>{{ m.equipo or 'Equipo' }} · {{ m.serie or '—' }}</h2>
+            <p>{{ m.tipo or 'Mantenimiento' }} programado para el {{ m.fecha_texto }}.
+               <span class="crono-chip crono-{{ m.estado_clase }}">{{ m.estado_nombre }}</span></p>
+        </div>
+        <div class="hero-actions">
+            <a class="btn btn-primary" href="{{ url_for('mantenimiento_correctivo') }}">Generar reporte</a>
+            <a class="btn btn-secondary"
+               href="{{ url_for('cronograma', anio=m.fecha_programada.year, mes=m.fecha_programada.month) }}">Volver al cronograma</a>
+        </div>
+    </section>
+
+    <div class="page-panel">
+        {% if error %}
+        <div class="alert alert-error" role="alert">{{ error }}</div>
+        {% endif %}
+
+        <h3 class="hv-titulo">Datos del equipo</h3>
+        <dl class="crono-datos">
+            <div><dt>N° de inventario</dt><dd>{{ m.inventario or '—' }}</dd></div>
+            <div><dt>Serie</dt><dd>{{ m.serie or '—' }}</dd></div>
+            <div><dt>Marca</dt><dd>{{ m.marca or '—' }}</dd></div>
+            <div><dt>Cliente</dt><dd>{{ m.cliente or '—' }}</dd></div>
+            <div><dt>Frecuencia</dt><dd>{{ frecuencias.get(m.frecuencia_meses or 0, '—') }}</dd></div>
+        </dl>
+
+        <h3 class="hv-titulo">Seguimiento</h3>
+        <form action="{{ url_for('actualizar_cronograma', cronograma_id=m.id) }}" method="post" autocomplete="off">
+            <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+            <div class="hv-grid hv-grid-3">
+                <div class="mb-3">
+                    <label class="form-label" for="d-estado">Estado</label>
+                    <select class="form-control" id="d-estado" name="estado" required>
+                        {% for clave, nombre in estados.items() %}
+                        <option value="{{ clave }}" {{ 'selected' if m.estado == clave }}>{{ nombre }}</option>
+                        {% endfor %}
+                    </select>
+                </div>
+                <div class="mb-3">
+                    <label class="form-label" for="d-fecha">Fecha programada</label>
+                    <input type="date" class="form-control" id="d-fecha" name="fecha_programada"
+                           value="{{ m.fecha_programada.isoformat() }}" required>
+                </div>
+                <div class="mb-3">
+                    <label class="form-label" for="d-tecnico">Técnico asignado</label>
+                    <select class="form-control" id="d-tecnico" name="tecnico_asignado_id">
+                        <option value="">Sin asignar</option>
+                        {% for t in tecnicos %}
+                        <option value="{{ t[0] }}" {{ 'selected' if m.id_tecnico == t[0] }}>{{ t[1] }}</option>
+                        {% endfor %}
+                    </select>
+                </div>
+            </div>
+            <div class="mb-3">
+                <label class="form-label" for="d-observaciones">Observaciones</label>
+                <textarea class="form-control" id="d-observaciones" name="observaciones" maxlength="1000">{{ m.observaciones or '' }}</textarea>
+            </div>
+            <div class="mt-4 hv-acciones">
+                <button type="submit" class="btn btn-primary">Guardar cambios</button>
+            </div>
+        </form>
+    </div>
+</div>
+{% endblock %}

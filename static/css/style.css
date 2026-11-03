@@ -953,6 +953,267 @@ tbody tr:hover{
     }
 }
 
+/* ======================================================================
+   Cronograma de mantenimiento
+   ====================================================================== */
+.crono-barra{
+    display:flex;
+    flex-wrap:wrap;
+    align-items:center;
+    justify-content:space-between;
+    gap:12px;
+    margin-bottom:16px;
+}
+
+.crono-vistas,
+.crono-periodo{
+    display:flex;
+    align-items:center;
+    gap:8px;
+}
+
+.crono-periodo h3{
+    min-width:160px;
+    margin:0;
+    color:#1f4e79;
+    font-size:1.15rem;
+    text-align:center;
+}
+
+.crono-filtros{
+    display:grid;
+    grid-template-columns:repeat(3, minmax(0, 1fr)) auto;
+    align-items:end;
+    gap:12px;
+    margin-bottom:14px;
+}
+
+.crono-filtros .form-control{
+    padding:9px 12px;
+}
+
+.crono-filtros-acciones{
+    display:flex;
+    gap:8px;
+}
+
+.crono-leyenda{
+    display:flex;
+    flex-wrap:wrap;
+    gap:14px;
+    margin:0 0 16px;
+    padding:0;
+    list-style:none;
+    color:#425466;
+    font-size:0.85rem;
+}
+
+.crono-leyenda li{
+    display:flex;
+    align-items:center;
+    gap:6px;
+}
+
+.crono-punto{
+    width:12px;
+    height:12px;
+    border-radius:50%;
+}
+
+/* Colores por estado (texto oscuro sobre fondo claro; "vencido" lleva además negrita) */
+.crono-pendiente{ background:#dcecf2; color:#1f4e79; border-color:#3e88a0; }
+.crono-vencido{ background:#fdecec; color:#7f1d1d; border-color:#c0392b; font-weight:700; }
+.crono-en_proceso{ background:#fdf3d7; color:#7a5200; border-color:#d39e00; }
+.crono-realizado{ background:#e8f6ee; color:#14532d; border-color:#2e9e5b; }
+.crono-cancelado{ background:#eceff3; color:#5b6b7f; border-color:#9aa7b5; text-decoration:line-through; }
+
+.crono-punto.crono-pendiente{ background:#3e88a0; }
+.crono-punto.crono-vencido{ background:#c0392b; }
+.crono-punto.crono-en_proceso{ background:#d39e00; }
+.crono-punto.crono-realizado{ background:#2e9e5b; }
+.crono-punto.crono-cancelado{ background:#9aa7b5; }
+
+.crono-chip{
+    display:inline-block;
+    max-width:100%;
+    padding:2px 8px;
+    border:1px solid;
+    border-radius:8px;
+    font-size:0.78rem;
+    line-height:1.4;
+    text-decoration:none;
+    white-space:nowrap;
+    overflow:hidden;
+    text-overflow:ellipsis;
+    vertical-align:middle;
+}
+
+/* Vista de mes */
+.crono-calendario{
+    margin-bottom:8px;
+}
+
+.crono-mes{
+    min-width:760px;
+    table-layout:fixed;
+}
+
+.crono-mes thead th{
+    text-align:center;
+}
+
+.crono-mes tbody tr:hover{
+    background:transparent;
+}
+
+.crono-mes tbody td{
+    height:112px;
+    padding:6px;
+    border:1px solid #edf3f8;
+    vertical-align:top;
+}
+
+.crono-mes .crono-chip{
+    display:block;
+    margin-top:4px;
+}
+
+.crono-dia{
+    display:inline-block;
+    min-width:26px;
+    border-radius:50%;
+    color:#2d4054;
+    font-size:0.88rem;
+    font-weight:600;
+    line-height:26px;
+    text-align:center;
+    text-decoration:none;
+}
+
+.crono-dia:hover{
+    background:#dcecf2;
+}
+
+.crono-fuera{
+    background:#f8fafc;
+}
+
+.crono-fuera .crono-dia{
+    color:#9aa7b5;
+}
+
+.crono-hoy .crono-dia{
+    background:#3e88a0;
+    color:#fff;
+}
+
+.crono-mas{
+    display:block;
+    margin-top:4px;
+    color:#3e88a0;
+    font-size:0.76rem;
+    font-weight:600;
+}
+
+/* Vista de año */
+.crono-anio{
+    min-width:980px;
+    table-layout:fixed;
+}
+
+.crono-anio thead th{
+    padding:10px 4px;
+    text-align:center;
+}
+
+.crono-anio thead a{
+    color:inherit;
+}
+
+.crono-anio tbody td{
+    padding:6px 3px;
+    border:1px solid #edf3f8;
+    text-align:center;
+}
+
+.crono-anio th.crono-equipo{
+    position:sticky;
+    left:0;
+    z-index:1;
+    width:230px;
+    padding:8px 10px;
+    border-top:1px solid #edf3f8;
+    background:#fff;
+    font-weight:400;
+    text-align:left;
+    text-transform:none;
+    letter-spacing:0;
+}
+
+.crono-anio thead th.crono-equipo{
+    background:#f2f7ff;
+    font-weight:700;
+}
+
+.crono-anio .crono-equipo strong,
+.crono-anio .crono-equipo small{
+    display:block;
+    overflow:hidden;
+    text-overflow:ellipsis;
+    white-space:nowrap;
+}
+
+.crono-anio .crono-equipo small{
+    color:#5b6b7f;
+    font-size:0.76rem;
+}
+
+.crono-mes-actual{
+    background:#f2f7ff;
+}
+
+.crono-marca{
+    display:inline-block;
+    min-width:26px;
+    margin:1px;
+    border:1px solid;
+    border-radius:7px;
+    font-size:0.78rem;
+    line-height:24px;
+    text-align:center;
+    text-decoration:none;
+}
+
+/* Detalle */
+.crono-datos{
+    display:grid;
+    grid-template-columns:repeat(auto-fit, minmax(180px, 1fr));
+    gap:14px;
+    margin:0 0 1rem;
+}
+
+.crono-datos dt{
+    color:#5b6b7f;
+    font-size:0.82rem;
+}
+
+.crono-datos dd{
+    margin:2px 0 0;
+    color:#1f2d3d;
+    font-weight:600;
+}
+
+@media (max-width: 900px) {
+    .crono-filtros{
+        grid-template-columns:minmax(0, 1fr);
+    }
+
+    /* En el celular el calendario no cabe: queda la agenda, que muestra lo mismo en lista */
+    .crono-calendario{
+        display:none;
+    }
+}
+
 /* Tablas de historial y clientes */
 td.acciones{
     text-align:right;

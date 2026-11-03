@@ -1,0 +1,89 @@
+{% extends "layout/base.html" %}
+{% block title %}Programar mantenimiento{% endblock %}
+
+{% block content %}
+<div class="dashboard-shell">
+    <section class="page-hero">
+        <div>
+            <span class="eyebrow">Cronograma de mantenimiento</span>
+            <h2>Programar mantenimiento</h2>
+            <p>Elige el equipo y la fecha. Con una frecuencia se generan las fechas de los próximos {{ horizonte }} meses.</p>
+        </div>
+        <div class="hero-actions">
+            <a class="btn btn-secondary" href="{{ url_for('cronograma') }}">Volver al cronograma</a>
+        </div>
+    </section>
+
+    <div class="page-panel">
+        {% if error %}
+        <div class="alert alert-error" role="alert">{{ error }}</div>
+        {% endif %}
+
+        {% if not equipos %}
+        <div class="alert alert-info" role="status">
+            No hay equipos en el inventario.
+            <a href="{{ url_for('ingresar_inventario') }}">Registra uno</a> para poder programarlo.
+        </div>
+        {% endif %}
+
+        <form action="{{ url_for('guardar_programacion') }}" method="post" autocomplete="off">
+            <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+
+            <div class="hv-grid">
+                <div class="mb-3">
+                    <label class="form-label" for="c-equipo">Equipo</label>
+                    <select class="form-control" id="c-equipo" name="id_equipo" required>
+                        <option value="">-- Seleccione --</option>
+                        {% for e in equipos %}
+                        <option value="{{ e.id }}" {{ 'selected' if valores.get('id_equipo') == e.id|string }}>
+                            {{ e.equipo or 'Equipo' }} · {{ e.serie }} · {{ e.cliente or 'Sin cliente' }}
+                        </option>
+                        {% endfor %}
+                    </select>
+                </div>
+                <div class="mb-3">
+                    <label class="form-label" for="c-tipo">Tipo de mantenimiento</label>
+                    <select class="form-control" id="c-tipo" name="tipo_mantenimiento" required>
+                        <option value="">-- Seleccione --</option>
+                        {% for t in tipos %}
+                        <option value="{{ t[0] }}" {{ 'selected' if valores.get('tipo_mantenimiento') == t[0]|string }}>{{ t[1] }}</option>
+                        {% endfor %}
+                    </select>
+                </div>
+                <div class="mb-3">
+                    <label class="form-label" for="c-fecha">Fecha programada (o primera fecha)</label>
+                    <input type="date" class="form-control" id="c-fecha" name="fecha_programada"
+                           value="{{ valores.get('fecha_programada', '') }}" required>
+                </div>
+                <div class="mb-3">
+                    <label class="form-label" for="c-frecuencia">Frecuencia</label>
+                    <select class="form-control" id="c-frecuencia" name="frecuencia_meses" required>
+                        {% for meses, nombre in frecuencias.items() %}
+                        <option value="{{ meses }}" {{ 'selected' if valores.get('frecuencia_meses') == meses|string }}>{{ nombre }}</option>
+                        {% endfor %}
+                    </select>
+                </div>
+                <div class="mb-3">
+                    <label class="form-label" for="c-tecnico">Técnico asignado (opcional)</label>
+                    <select class="form-control" id="c-tecnico" name="tecnico_asignado_id">
+                        <option value="">Sin asignar</option>
+                        {% for t in tecnicos %}
+                        <option value="{{ t[0] }}" {{ 'selected' if valores.get('tecnico_asignado_id') == t[0]|string }}>{{ t[1] }}</option>
+                        {% endfor %}
+                    </select>
+                </div>
+            </div>
+
+            <div class="mb-3">
+                <label class="form-label" for="c-observaciones">Observaciones (opcional)</label>
+                <textarea class="form-control" id="c-observaciones" name="observaciones" maxlength="1000">{{ valores.get('observaciones', '') }}</textarea>
+            </div>
+
+            <div class="mt-4 hv-acciones">
+                <button type="submit" class="btn btn-primary" {{ 'disabled' if not equipos }}>Programar</button>
+                <a class="btn btn-secondary" href="{{ url_for('cronograma') }}">Cancelar</a>
+            </div>
+        </form>
+    </div>
+</div>
+{% endblock %}

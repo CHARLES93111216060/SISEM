@@ -1,4 +1,5 @@
 """SISEM - Sistema Integrado de Seguimiento de Equipos Médicos (Flask)."""
+import calendar
 import hmac
 import io
 import json
@@ -293,7 +294,6 @@ def ver_clientes():
 
 # Módulos del menú que aún no existen: muestran una página clara en lugar de un 404.
 PROXIMAMENTE = {
-    ('mantenimiento', 'planificado'): 'Cronograma de mantenimiento',
     ('mantenimiento', 'solicitudes'): 'Solicitudes de mantenimiento',
     ('comercial', 'clientes'): 'Facturación',
     ('comercial', 'ordenes'): 'Órdenes de compra',
@@ -951,6 +951,256 @@ def procesar_excel():
         'total_errores': len(errores),
         'errores': errores[:_EXCEL_ERRORES_VISIBLES],
     })
+
+
+# ----------------------------------------------------------------------------------------
+# Cronograma de mantenimientos
+# ----------------------------------------------------------------------------------------
+ESTADOS_CRONOGRAMA = {
+    'pendiente': 'Pendiente', 'en_proceso': 'En proceso',
+    'realizado': 'Realizado', 'cancelado': 'Cancelado',
+}
+FRECUENCIAS_CRONOGRAMA = {
+    0: 'Una sola vez', 1: 'Mensual', 2: 'Bimestral', 3: 'Trimestral',
+    4: 'Cuatrimestral', 6: 'Semestral', 12: 'Anual',
+}
+_MESES = ('Enero', 'Febrero', 'Marzo', 'Abril', 'Mayo', 'Junio', 'Julio', 'Agosto',
+          'Septiembre', 'Octubre', 'Noviembre', 'Diciembre')
+_DIAS_SEMANA = ('Lun', 'Mar', 'Mié', 'Jue', 'Vie', 'Sáb', 'Dom')
+_HORIZONTE_MESES = 12             # la frecuencia genera las fechas de los próximos 12 meses
+_MAX_OBSERVACIONES = 1000
+
+
+def _sumar_meses(fecha, meses):
+    """31/01 + 1 mes -> 28/02: si el mes no tiene ese día, se usa el último."""
+    total = fecha.month - 1 + meses
+    anio, mes = fecha.year + total // 12, total % 12 + 1
+    return date(anio, mes, min(fecha.day, calendar.monthrange(anio, mes)[1]))
+
+
+def _leer_fecha(texto):
+    """date o None; acepta solo AAAA-MM-DD real y entre 2000 y 2100."""
+    texto = (texto or '').strip()
+    if not _FECHA.match(texto):
+        return None
+    try:
+        fecha = datetime.strptime(texto, '%Y-%m-%d').date()
+    except ValueError:
+        return None
+    return fecha if 2000 <= fecha.year <= 2100 else None
+
+
+def _arg_entero(nombre, minimo, maximo):
+    """Parámetro entero de la URL dentro de un rango, o None si falta o no es válido."""
+    valor = request.args.get(nombre, type=int)
+    return valor if valor is not None and minimo <= valor <= maximo else None
+
+
+def _nombres_sin_repetir(catalogo):
+    """Catálogo [(id, nombre)] sin nombres repetidos (se conserva el id menor)."""
+    unicos = {}
+    for id_, nombre in sorted(catalogo or []):
+        unicos.setdefault(_normalizar(nombre), (id_, nombre))
+    return sorted(unicos.values(), key=lambda fila: fila[1])
+
+
+def _decorar_cronograma(fila, hoy):
+    """Agrega lo que muestran las plantillas. 'Vencido' no se guarda: es un pendiente con fecha pasada."""
+    vencido = fila['estado'] == 'pendiente' and fila['fecha_programada'] < hoy
+    fila['estado_clase'] = 'vencido' if vencido else fila['estado']
+    fila['estado_nombre'] = 'Vencido' if vencido else ESTADOS_CRONOGRAMA.get(fila['estado'], fila['estado'])
+    fila['fecha_texto'] = fila['fecha_programada'].strftime('%d/%m/%Y')
+    return fila
+
+
+@sisem.route('/mantenimiento/planificado')
+@login_required
+def cronograma():
+    """Cronograma: vista de mes (calendario + agenda) o de año (equipos × 12 meses)."""
+    hoy = date.today()
+    vista = 'anio' if request.args.get('vista') == 'anio' else 'mes'
+    anio = _arg_entero('anio', 2000, 2100) or hoy.year
+    mes = _arg_entero('mes', 1, 12) or hoy.month
+    estado = request.args.get('estado', '')
+    if estado != 'vencido' and estado not in ESTADOS_CRONOGRAMA:
+        estado = ''
+    id_tecnico = _arg_entero('tecnico', 1, 2147483647)
+    id_cliente = _arg_entero('cliente', 1, 2147483647)
+
+    if vista == 'mes':
+        desde, hasta = date(anio, mes, 1), date(anio, mes, calendar.monthrange(anio, mes)[1])
+    else:
+        desde, hasta = date(anio, 1, 1), date(anio, 12, 31)
+    filas = [_decorar_cronograma(f, hoy)
+             for f in db.cronograma_entre(desde, hasta, hoy, estado or None, id_tecnico, id_cliente)]
+
+    contexto = {}
+    if vista == 'mes':
+        por_dia = defaultdict(list)
+        for fila in filas:
+            por_dia[fila['fecha_programada']].append(fila)
+        anterior, siguiente = _sumar_meses(desde, -1), _sumar_meses(desde, 1)
+        contexto.update(
+            semanas=calendar.Calendar().monthdatescalendar(anio, mes),
+            por_dia=por_dia, titulo_periodo=f"{_MESES[mes - 1]} {anio}",
+            anterior={'anio': anterior.year, 'mes': anterior.month},
+            siguiente={'anio': siguiente.year, 'mes': siguiente.month},
+        )
+    else:
+        equipos = {}
+        for fila in filas:
+            equipo = equipos.setdefault(fila['id_equipo'], {
+                'inventario': fila['inventario'], 'serie': fila['serie'], 'equipo': fila['equipo'],
+                'cliente': fila['cliente'], 'meses': defaultdict(list),
+            })
+            equipo['meses'][fila['fecha_programada'].month].append(fila)
+        contexto.update(
+            matriz=sorted(equipos.values(), key=lambda e: (e['cliente'] or '', e['inventario'] or '')),
+            titulo_periodo=str(anio),
+            anterior={'anio': anio - 1, 'mes': mes}, siguiente={'anio': anio + 1, 'mes': mes},
+        )
+
+    filtros = {k: v for k, v in (('estado', estado), ('tecnico', id_tecnico), ('cliente', id_cliente)) if v}
+    equipos_disponibles = db.equipos_cronograma() or []
+    clientes = sorted({(e['id_cliente'], e['cliente']) for e in equipos_disponibles if e['cliente']},
+                      key=lambda fila: fila[1])
+    return render_template(
+        'forms/cronograma/cronograma.html',
+        vista=vista, anio=anio, mes=mes, hoy=hoy, filas=filas, filtros=filtros,
+        estado=estado, id_tecnico=id_tecnico, id_cliente=id_cliente,
+        resumen={
+            'total': len(filas),
+            'pendientes': sum(f['estado_clase'] == 'pendiente' for f in filas),
+            'vencidos': sum(f['estado_clase'] == 'vencido' for f in filas),
+            'realizados': sum(f['estado_clase'] == 'realizado' for f in filas),
+        },
+        estados=ESTADOS_CRONOGRAMA, meses=_MESES, dias_semana=_DIAS_SEMANA,
+        tecnicos=db.personal() or [], clientes=clientes,
+        aviso=request.args.get('aviso'), creados=_arg_entero('creados', 0, 1000),
+        omitidos=_arg_entero('omitidos', 0, 1000),
+        **contexto,
+    )
+
+
+def _pagina_programar(error=None, valores=None, codigo=200):
+    return render_template(
+        'forms/cronograma/programar.html',
+        equipos=db.equipos_cronograma() or [],
+        tipos=_nombres_sin_repetir(db.servicios()),
+        tecnicos=db.personal() or [],
+        frecuencias=FRECUENCIAS_CRONOGRAMA, horizonte=_HORIZONTE_MESES,
+        error=error, valores=valores or {},
+    ), codigo
+
+
+@sisem.route('/mantenimiento/planificado/nuevo')
+@login_required
+def programar_mantenimiento():
+    fecha = _leer_fecha(request.args.get('fecha'))     # viene al pulsar un día del calendario
+    return _pagina_programar(valores={'fecha_programada': fecha.isoformat()} if fecha else None)
+
+
+def _validar_programacion(form):
+    """Devuelve ``(filas, error)``: una fila por cada fecha que genera la frecuencia."""
+    def id_en(campo, validos):
+        valor = (form.get(campo) or '').strip()
+        return int(valor) if valor.isdigit() and int(valor) in validos else None
+
+    id_equipo = id_en('id_equipo', {e['id'] for e in db.equipos_cronograma() or []})
+    if id_equipo is None:
+        return None, "Selecciona el equipo."
+    id_tipo = id_en('tipo_mantenimiento', {f[0] for f in db.servicios() or []})
+    if id_tipo is None:
+        return None, "Selecciona el tipo de mantenimiento."
+    fecha = _leer_fecha(form.get('fecha_programada'))
+    if fecha is None:
+        return None, "La fecha programada no es válida."
+    frecuencia = (form.get('frecuencia_meses') or '').strip()
+    if not frecuencia.isdigit() or int(frecuencia) not in FRECUENCIAS_CRONOGRAMA:
+        return None, "Selecciona la frecuencia."
+    frecuencia = int(frecuencia)
+    id_tecnico = None
+    if (form.get('tecnico_asignado_id') or '').strip():
+        id_tecnico = id_en('tecnico_asignado_id', {f[0] for f in db.personal() or []})
+        if id_tecnico is None:
+            return None, "El técnico seleccionado no es válido."
+    observaciones = (form.get('observaciones') or '').replace('\x00', '').strip()
+    if len(observaciones) > _MAX_OBSERVACIONES:
+        return None, f"Las observaciones admiten máximo {_MAX_OBSERVACIONES} caracteres."
+
+    # Frecuencia 3 -> meses 0, 3, 6, 9 desde la fecha inicial; "una sola vez" -> solo esa fecha.
+    saltos = range(0, _HORIZONTE_MESES, frecuencia) if frecuencia else [0]
+    return [{
+        'id_equipo': id_equipo, 'tipo_mantenimiento': id_tipo, 'frecuencia_meses': frecuencia or None,
+        'fecha_programada': _sumar_meses(fecha, salto), 'tecnico_asignado_id': id_tecnico,
+        'observaciones': observaciones or None,
+    } for salto in saltos], None
+
+
+@sisem.route('/mantenimiento/planificado/guardar', methods=['POST'])
+@login_required
+def guardar_programacion():
+    filas, problema = _validar_programacion(request.form)
+    if problema:
+        return _pagina_programar(error=problema, valores=request.form, codigo=400)
+    try:
+        creados, omitidos = db.programar_mantenimientos(filas)
+    except Exception:
+        logger.exception("No se pudo guardar la programación del cronograma")
+        return _pagina_programar(error="No se pudo guardar la programación. Inténtalo de nuevo.",
+                                 valores=request.form, codigo=500)
+    inicio = filas[0]['fecha_programada']
+    return redirect(url_for('cronograma', anio=inicio.year, mes=inicio.month, aviso='creado',
+                            creados=creados, omitidos=omitidos))
+
+
+def _pagina_detalle_cronograma(fila, error=None, codigo=200):
+    return render_template('forms/cronograma/detalle.html', m=_decorar_cronograma(fila, date.today()),
+                           estados=ESTADOS_CRONOGRAMA, frecuencias=FRECUENCIAS_CRONOGRAMA,
+                           tecnicos=db.personal() or [], error=error), codigo
+
+
+@sisem.route('/mantenimiento/planificado/<int:cronograma_id>')
+@login_required
+def detalle_cronograma(cronograma_id):
+    fila = db.obtener_cronograma(cronograma_id)
+    if not fila:
+        abort(404)
+    return _pagina_detalle_cronograma(fila)
+
+
+@sisem.route('/mantenimiento/planificado/<int:cronograma_id>/actualizar', methods=['POST'])
+@login_required
+def actualizar_cronograma(cronograma_id):
+    fila = db.obtener_cronograma(cronograma_id)
+    if not fila:
+        abort(404)
+
+    form = request.form
+    estado = form.get('estado', '')
+    fecha = _leer_fecha(form.get('fecha_programada'))
+    observaciones = (form.get('observaciones') or '').replace('\x00', '').strip()
+    texto_tecnico = (form.get('tecnico_asignado_id') or '').strip()
+    id_tecnico = int(texto_tecnico) if texto_tecnico.isdigit() else None
+
+    problema = None
+    if estado not in ESTADOS_CRONOGRAMA:
+        problema = "Selecciona un estado válido."
+    elif fecha is None:
+        problema = "La fecha programada no es válida."
+    elif texto_tecnico and id_tecnico not in {f[0] for f in db.personal() or []}:
+        problema = "El técnico seleccionado no es válido."
+    elif len(observaciones) > _MAX_OBSERVACIONES:
+        problema = f"Las observaciones admiten máximo {_MAX_OBSERVACIONES} caracteres."
+    if problema:
+        return _pagina_detalle_cronograma(fila, error=problema, codigo=400)
+
+    try:
+        db.actualizar_cronograma(cronograma_id, estado, fecha, id_tecnico, observaciones or None)
+    except Exception:
+        logger.exception("No se pudo actualizar el cronograma %s", cronograma_id)
+        return _pagina_detalle_cronograma(fila, error="No se pudo guardar. Inténtalo de nuevo.", codigo=500)
+    return redirect(url_for('cronograma', anio=fecha.year, mes=fecha.month, aviso='actualizado'))
 
 
 if __name__ == '__main__':

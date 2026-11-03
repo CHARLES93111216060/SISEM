@@ -1,0 +1,63 @@
+{# Calendario del mes. En pantallas pequeñas se oculta y queda la agenda de abajo. #}
+{% set MAX_POR_DIA = 3 %}
+<div class="crono-calendario table-responsive">
+    <table class="crono-mes">
+        <thead>
+            <tr>{% for dia in dias_semana %}<th scope="col">{{ dia }}</th>{% endfor %}</tr>
+        </thead>
+        <tbody>
+            {% for semana in semanas %}
+            <tr>
+                {% for dia in semana %}
+                {% set eventos = por_dia.get(dia, []) %}
+                <td class="{{ 'crono-fuera' if dia.month != mes }} {{ 'crono-hoy' if dia == hoy }}">
+                    <a class="crono-dia" title="Programar el {{ dia.strftime('%d/%m/%Y') }}"
+                       href="{{ url_for('programar_mantenimiento', fecha=dia.isoformat()) }}">{{ dia.day }}</a>
+                    {% for e in eventos[:MAX_POR_DIA] %}
+                    <a class="crono-chip crono-{{ e.estado_clase }}"
+                       title="{{ e.estado_nombre }}: {{ e.equipo or 'Equipo' }} · {{ e.serie or '' }} · {{ e.tipo or '' }}"
+                       href="{{ url_for('detalle_cronograma', cronograma_id=e.id) }}">{{ e.equipo or e.serie or 'Equipo' }}</a>
+                    {% endfor %}
+                    {% if eventos|length > MAX_POR_DIA %}
+                    <a class="crono-mas" href="#agenda">+{{ eventos|length - MAX_POR_DIA }} más</a>
+                    {% endif %}
+                </td>
+                {% endfor %}
+            </tr>
+            {% endfor %}
+        </tbody>
+    </table>
+</div>
+
+<h3 class="hv-titulo" id="agenda">Agenda de {{ titulo_periodo }}</h3>
+{% if filas %}
+<div class="table-responsive">
+    <table>
+        <thead>
+            <tr>
+                <th>Fecha</th><th>Equipo</th><th>Serie</th><th>Cliente</th>
+                <th>Tipo</th><th>Técnico</th><th>Estado</th>
+                <th><span class="sr-only">Acciones</span></th>
+            </tr>
+        </thead>
+        <tbody>
+            {% for e in filas %}
+            <tr>
+                <td>{{ e.fecha_texto }}</td>
+                <td>{{ e.equipo or '—' }}</td>
+                <td>{{ e.serie or '—' }}</td>
+                <td>{{ e.cliente or '—' }}</td>
+                <td>{{ e.tipo or '—' }}</td>
+                <td>{{ e.tecnico or 'Sin asignar' }}</td>
+                <td><span class="crono-chip crono-{{ e.estado_clase }}">{{ e.estado_nombre }}</span></td>
+                <td class="acciones">
+                    <a class="btn btn-secondary btn-sm" href="{{ url_for('detalle_cronograma', cronograma_id=e.id) }}">Ver</a>
+                </td>
+            </tr>
+            {% endfor %}
+        </tbody>
+    </table>
+</div>
+{% else %}
+<p class="vacio">No hay mantenimientos en este periodo{{ ' con esos filtros' if filtros }}.</p>
+{% endif %}

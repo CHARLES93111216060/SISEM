@@ -1,8 +1,8 @@
 # SISEM — Sistema Integrado de Seguimiento de Equipos Médicos
 
 Aplicación Flask para registrar mantenimientos de equipos biomédicos y las hojas de vida de los equipos
-(con descarga de ambos documentos en PDF) y para gestionar el inventario de equipos, ya sea uno por uno
-o cargando un archivo Excel.
+(con descarga de ambos documentos en PDF), para gestionar el inventario de equipos, ya sea uno por uno
+o cargando un archivo Excel, y para planear los mantenimientos en un cronograma mensual y anual.
 
 ## Estructura del proyecto
 
@@ -15,7 +15,8 @@ SISEM_PROJECT/
 │                               #   · hojas de vida (_validar_hoja_vida, _procesar_foto);
 │                               #   · inventario manual (_validar_inventario);
 │                               #   · carga de inventario por Excel (_abrir_excel, _leer_filas_excel,
-│                               #     _fila_excel_a_formulario, procesar_excel).
+│                               #     _fila_excel_a_formulario, procesar_excel);
+│                               #   · cronograma (_validar_programacion, actualizar_cronograma).
 ├── requirements.txt            # Dependencias de Python con versión fija (formato paquete==versión).
 ├── Dockerfile                  # Imagen para Render: Python + librerías de sistema de WeasyPrint (Pango),
 │                               #   usuario sin privilegios y arranque con gunicorn.
@@ -36,6 +37,8 @@ SISEM_PROJECT/
 │   │                           #     (hoja + accesorios en una transacción), leer, buscar y contar.
 │   │                           #   · Inventario: listado con los nombres de tipo, marca y cliente (JOIN) y
 │   │                           #     guardar_inventario (lanza InventarioDuplicado si la serie ya existe).
+│   │                           #   · Cronograma: equipos programables, consulta por rango de fechas y filtros,
+│   │                           #     programar (varias fechas en una transacción, sin duplicar) y actualizar.
 │   └── postgres/               # Migración de MariaDB a PostgreSQL
 │       ├── LEEME.md            # Guía paso a paso de la migración.
 │       ├── 00_tipos_en_mariadb.sql   # Consulta los tipos reales de columnas en MariaDB.
@@ -88,6 +91,12 @@ SISEM_PROJECT/
 │   │   │   │                                 #   los catálogos); conserva lo escrito si hay un error.
 │   │   │   └── cargar_excel.html             # Carga de inventario desde un .xlsx: formato esperado, resumen
 │   │   │                                     #   del resultado y tabla con los errores por fila.
+│   │   ├── cronograma/
+│   │   │   ├── cronograma.html               # Página principal: resumen, cambio de vista y periodo, filtros y leyenda.
+│   │   │   ├── _vista_mes.html               # Calendario del mes y agenda en tabla (la que queda en el celular).
+│   │   │   ├── _vista_anio.html              # Matriz de equipos × 12 meses, con el día y el estado de cada fecha.
+│   │   │   ├── programar.html                # Formulario para programar: la frecuencia genera las fechas de 12 meses.
+│   │   │   └── detalle.html                  # Datos del equipo y seguimiento (estado, fecha, técnico, observaciones).
 │   │   ├── biomedical_form.html              # Borrador antiguo; ninguna ruta lo usa.
 │   │   ├── calibration_form.html             # Vacío; ninguna ruta lo usa.
 │   │   └── protocolos_mantenimiento/         # Un formulario por tipo de equipo (ids 1-16 de TIPOS_EQUIPO);
@@ -125,7 +134,7 @@ SISEM_PROJECT/
 │
 ├── static/                     # Archivos públicos que sirve Flask
 │   ├── css/
-│   │   ├── style.css           # Estilos de la aplicación (incluye los del módulo de hojas de vida: .hv-*).
+│   │   ├── style.css           # Estilos de la aplicación (incluye hojas de vida, .hv-*, y cronograma, .crono-*).
 │   │   └── login.css           # Estilos de la pantalla de inicio de sesión.
 │   ├── js/
 │   │   ├── app.js              # Común: menú lateral, lectura del token CSRF y descarga del PDF por fetch.
@@ -146,10 +155,11 @@ SISEM_PROJECT/
 ├── tests/
 │   ├── __init__.py
 │   ├── helpers.py              # Entorno de prueba: base de datos simulada (reportes, inventario, hojas de
-│   │                           #   vida) y variables de entorno falsas.
+│   │                           #   vida, cronograma) y variables de entorno falsas.
 │   ├── test_sisem.py           # Pruebas de seguridad, rutas, validación, contenido de los PDF, hojas de
 │   │                           #   vida (guardar, validar, duplicados, consultar, PDF), inventario (listado,
-│   │                           #   formulario, serie repetida) y carga por Excel (archivos maliciosos incluidos).
+│   │                           #   formulario, serie repetida), carga por Excel (archivos maliciosos incluidos)
+│   │                           #   y cronograma (vistas, frecuencia, duplicados, validación, seguimiento).
 │   └── test_db.py              # Pruebas de database/db.py con un pool de conexiones simulado.
 │
 └── tools/
@@ -167,6 +177,11 @@ SISEM_PROJECT/
 | `/mantenimiento/reportes/guardar_informe`          | POST (JSON)       | Valida y guarda un reporte                                 |
 | `/mantenimiento/reportes/<id>/descargar`           | GET               | PDF del reporte                                            |
 | `/mantenimiento/historial`                         | GET               | Historial paginado de reportes                             |
+| `/mantenimiento/planificado?vista=…&anio=…&mes=…&estado=…&tecnico=…&cliente=…` | GET | Cronograma: vista de mes o de año, con filtros       |
+| `/mantenimiento/planificado/nuevo?fecha=…`         | GET               | Formulario para programar (la fecha es opcional)           |
+| `/mantenimiento/planificado/guardar`               | POST (formulario) | Valida y crea las fechas; redirige al mes de la primera    |
+| `/mantenimiento/planificado/<id>`                  | GET               | Detalle de un mantenimiento programado                     |
+| `/mantenimiento/planificado/<id>/actualizar`       | POST (formulario) | Cambia estado, fecha, técnico y observaciones              |
 | `/mantenimiento/hojas_vida_equipos`                | GET               | Página del módulo de hojas de vida                       |
 | `/crear_hv`                                        | GET               | Formulario de nueva hoja de vida                           |
 | `/mantenimiento/hojas_vida_equipos/guardar`        | POST (multipart)  | Valida y guarda la hoja de vida y sus accesorios           |
@@ -195,19 +210,21 @@ PostgreSQL. Tablas que usa la aplicación:
 | `hojas_vida_equipos`                                                      | Hoja de vida de cada equipo (`id_inventario` único → una por equipo), incluida la foto (`bytea`)                                        |
 | `hojas_vida_accesorios`                                                   | Hasta 8 accesorios por hoja de vida (`id_hoja_vida`, `fila` 1-8)                                                                          |
 | `v_hojas_vida` (vista)                                                    | Une la hoja de vida con inventario, tipo, marca, cliente y responsable; la usan el PDF y la consulta                                          |
+| `cronograma_mantenimientos`                                               | Una fila por cada fecha programada: equipo, tipo de mantenimiento, frecuencia, fecha, estado, técnico y observaciones                         |
 
 La base de Render es una **copia exacta** de la base local (estructura y datos). Cualquier cambio de estructura
 (tablas, columnas, restricciones, vistas) hay que hacerlo en las dos.
 
-`riesgo`, `hojas_vida_equipos`, `hojas_vida_accesorios`, `v_hojas_vida`, las columnas `inventario.invima` y
-`personal.telefono` y la restricción `unico_serie` se crearon directamente en la base y **no están en
+`riesgo`, `hojas_vida_equipos`, `hojas_vida_accesorios`, `v_hojas_vida`, `cronograma_mantenimientos`, las columnas
+`inventario.invima` y `personal.telefono` y la restricción `unico_serie` se crearon directamente en la base y **no están en
 `database/postgres/01_esquema.sql`**. Para montar una base nueva desde cero, copia la estructura de la base
 local (por ejemplo, con *Generate SQL → DDL* de DBeaver) en vez de usar solo ese script.
 
 **Nombres repetidos en los catálogos.** Hoy `tipo_equipo` tiene los 16 tipos dos veces (ids 1-16 y 18-33) y
 casi todas las marcas están repetidas, así que las listas desplegables muestran nombres duplicados. La carga
 por Excel no se ve afectada: cuando un nombre tiene varios ids usa el **menor** (en `tipo_equipo`, los 1-16 que
-usan los formularios y PDF de mantenimiento).
+usan los formularios y PDF de mantenimiento). `mantenimientos` también está repetido (ids 1-9 y 10-18): el
+formulario del cronograma muestra cada nombre una sola vez y guarda el id menor.
 
 ## Flujo de datos
 
@@ -364,6 +381,48 @@ flowchart TD
    La página muestra "N equipos guardados, M filas con error" y una tabla con el número real de la fila en
    Excel y el motivo (hasta 50). Los errores internos solo van al log del servidor.
 
+### Cronograma de mantenimiento
+
+```mermaid
+flowchart TD
+    U[Navegador] -->|1. GET /mantenimiento/planificado<br/>vista, periodo y filtros| C[app.py · cronograma]
+    C -->|SELECT por rango de fechas<br/>JOIN inventario, tipo, marca, cliente,<br/>mantenimientos, personal| DB[(PostgreSQL<br/>database/db.py)]
+    C -->|calcula vencidos y arma<br/>calendario o matriz anual| T[cronograma.html<br/>_vista_mes / _vista_anio]
+    T -->|HTML| U
+    U -->|2. GET /planificado/nuevo| P[app.py · programar_mantenimiento<br/>equipos y catálogos]
+    U -->|3. POST /planificado/guardar<br/>formulario + csrf_token| G[app.py · guardar_programacion<br/>_validar_programacion]
+    G -->|una fila por fecha en una transacción<br/>omite las ya programadas| DB
+    G -->|redirige al mes con el resultado| U
+    U -->|4. GET /planificado/&lt;id&gt;| D[app.py · detalle_cronograma]
+    D -->|SELECT del mantenimiento| DB
+    U -->|5. POST /planificado/&lt;id&gt;/actualizar<br/>formulario + csrf_token| A[app.py · actualizar_cronograma]
+    A -->|UPDATE parametrizado| DB
+```
+
+1. **Consulta.** `/mantenimiento/planificado` valida los parámetros de la URL (uno inválido se ignora) y lee
+   los mantenimientos del periodo. La consulta une la tabla con inventario, tipo de equipo, marca, cliente,
+   tipo de mantenimiento y técnico. Muestra el resumen del periodo (programados, pendientes, vencidos y
+   realizados) y filtra por estado, técnico y cliente.
+2. **Vista de mes.** Calendario con los mantenimientos de cada día (hasta 3; si hay más, enlace a la agenda) y,
+   debajo, una agenda en tabla. Pulsar un día abre el formulario con esa fecha; pulsar un mantenimiento abre su
+   detalle. En pantallas de hasta 900 px el calendario se oculta y queda la agenda.
+3. **Vista de año.** Una fila por equipo y una columna por mes. Cada marca es el día programado, con el color de
+   su estado. Solo aparecen los equipos con fechas en ese año y con los filtros aplicados.
+4. **Programar.** Se elige equipo, tipo de mantenimiento, fecha, frecuencia (una sola vez, mensual, bimestral,
+   trimestral, cuatrimestral, semestral o anual), técnico opcional y observaciones. `_validar_programacion`
+   comprueba que los ids existan y que la fecha sea real, y genera las fechas de los **próximos 12 meses**: trimestral
+   desde el 31/01 crea 31/01, 30/04, 31/07 y 31/10 (si el mes no tiene ese día, usa el último).
+   `db.programar_mantenimientos` las inserta en una sola transacción y omite las que ya existan para el mismo
+   equipo, tipo y fecha, por lo que repetir el formulario no duplica el cronograma. La página informa cuántas se
+   crearon y cuántas se omitieron.
+5. **Seguimiento.** El detalle permite cambiar estado (pendiente, en proceso, realizado, cancelado), fecha, técnico
+   y observaciones. El botón *Generar reporte* solo abre la página de reportes: guardar un reporte no cambia el
+   estado del mantenimiento.
+
+"Vencido" no se guarda en la tabla: se calcula al mostrar, y es un pendiente con fecha anterior a hoy. Si la consulta
+del periodo falla (por ejemplo, porque la tabla no existe en esa base), la página responde con error y lo registra en
+el log, en lugar de decir que no hay mantenimientos.
+
 En todas las respuestas `app.py` agrega cabeceras de seguridad (CSP, `X-Frame-Options`, `nosniff`,
 HSTS en HTTPS y `Cache-Control: no-store` en páginas con datos). Si ocurre un error, el detalle queda en
 el log del servidor y el usuario solo ve un mensaje genérico (`error.html` o JSON `{"error": ...}`).
@@ -420,9 +479,10 @@ python -m unittest discover -s tests -t . -v
 Usan una base de datos simulada; no necesitan PostgreSQL. Cubren login, CSRF, validación, cabeceras,
 cálculos del informe, el HTML de los 16 tipos de equipo, el módulo de hojas de vida (guardado con foto y
 accesorios, validaciones, duplicados, consulta, nombre del archivo y restricciones del generador de PDF), el
-inventario (listado con nombres y buscador, formulario, validaciones, serie repetida) y la carga por Excel
+inventario (listado con nombres y buscador, formulario, validaciones, serie repetida), la carga por Excel
 (nombres sin tildes ni mayúsculas, encabezados en otro orden, errores por fila y archivos rechazados: texto
-renombrado, bomba ZIP, macros, bomba XML, más de 1000 filas, sin CSRF).
+renombrado, bomba ZIP, macros, bomba XML, más de 1000 filas, sin CSRF) y el cronograma (vistas de mes y año,
+parámetros inválidos, fechas generadas por la frecuencia, duplicados, validaciones y seguimiento).
 **No** generan el PDF final (eso lo hace WeasyPrint): después de desplegar, descarga un PDF de cada
 documento para revisar el diseño.
 
@@ -443,6 +503,9 @@ quitarlo (y la parte `fromDatabase` de `DATABASE_URL`) para no conectar la app a
 arranca o la carga por Excel queda sin protección. La guía para migrar desde MariaDB (esquema, copia de datos
 con DBeaver y verificación) está en `database/postgres/LEEME.md`.
 
+La tabla `cronograma_mantenimientos` también debe existir en la base de Render. El servidor calcula "hoy" y los
+vencidos con su propia hora, que en Render suele ser UTC: después de las 7 p. m. de Colombia ya usa el día siguiente.
+
 ## Seguridad: qué se hizo
 
 - Contraseña verificada con hash (`ADMIN_PASSWORD_HASH`, scrypt) y comparación en tiempo constante; ya no se compara texto plano.
@@ -451,7 +514,7 @@ con DBeaver y verificación) está en `database/postgres/LEEME.md`.
 - Cookie de sesión `HttpOnly`, `SameSite=Lax` y `Secure` (en producción); sesión nueva al iniciar sesión; expira por inactividad.
 - Cabeceras: Content-Security-Policy estricta (sin scripts inline), `X-Frame-Options`, `nosniff`, HSTS, `Cache-Control: no-store`.
 - `SECRET_KEY` obligatoria en producción; `FLASK_DEBUG` apagado por defecto (antes estaba **encendido**).
-- Validación en el servidor de reportes, hojas de vida e inventario (tipos, longitudes, fechas, valores permitidos, ids existentes, tamaño máximo de 1 MB por envío). Los formularios solo aceptan los campos conocidos; el resto se ignora.
+- Validación en el servidor de reportes, hojas de vida, inventario y cronograma (tipos, longitudes, fechas, valores permitidos, ids existentes, tamaño máximo de 1 MB por envío). Los formularios solo aceptan los campos conocidos; el resto se ignora.
 - Carga por Excel: solo `.xlsx` con firma ZIP real, límite de tamaño descomprimido y de archivos internos (contra bombas ZIP), sin macros, `defusedxml` contra ataques XML, sin ejecutar fórmulas, rechazo de textos que empiezan por `=`, `+` o `@`, máximo 1000 filas y la misma validación del formulario manual en cada fila.
 - Fotos de las hojas de vida revisadas y recodificadas con Pillow (sin metadatos ni contenido que no sea imagen).
 - Los errores ya no devuelven `str(e)` al navegador (podía filtrar datos de la base); se registran en el log.
@@ -464,6 +527,8 @@ con DBeaver y verificación) está en `database/postgres/LEEME.md`.
 
 - Completar los módulos pendientes del aplicativo.
 - Escribir la fecha de aprobación del formato PM_003 en `FECHA_APROBACION_HV`.
-- Agregar a los scripts de `database/postgres/` la estructura creada a mano (`riesgo`, `hojas_vida_equipos`, `hojas_vida_accesorios`, `v_hojas_vida`, `inventario.invima`, `personal.telefono`, `unico_serie`).
-- Limpiar los nombres repetidos de `tipo_equipo`, `marcas` y `clientes` (conservando en `tipo_equipo` los ids 1-16).
+- Agregar a los scripts de `database/postgres/` la estructura creada a mano (`riesgo`, `hojas_vida_equipos`, `hojas_vida_accesorios`, `v_hojas_vida`, `cronograma_mantenimientos`, `inventario.invima`, `personal.telefono`, `unico_serie`).
+- Limpiar los nombres repetidos de `tipo_equipo`, `marcas`, `clientes` y `mantenimientos` (conservando en `tipo_equipo` los ids 1-16).
+- Cronograma: revisar los `ON DELETE CASCADE` de `tecnico_asignado_id` y `tipo_mantenimiento` (borrar un técnico o un tipo borra sus mantenimientos programados); limitar `estado` con un `CHECK` y agregar un índice por `fecha_programada`.
+- Cronograma: renovar las fechas al pasar los 12 meses, enlazar los reportes (guardar uno no marca el mantenimiento como realizado), avisos de próximos mantenimientos y exportar a PDF.
 - Si el inventario crece a miles de equipos, pasar el buscador del navegador a una búsqueda paginada en el servidor (como en la consulta de hojas de vida).

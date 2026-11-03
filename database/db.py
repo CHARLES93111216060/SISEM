@@ -284,6 +284,110 @@ def contar_reportes(desde_fecha=None):
         logger.exception("Error contando reportes")
         return None
 
+# -----------------------------------------------------------------------------------------
+# Cronograma de mantenimientos (tabla cronograma_mantenimientos)
+# -----------------------------------------------------------------------------------------
+_CRONOGRAMA_SELECT = (
+    "SELECT cm.id, cm.fecha_programada, cm.estado, cm.frecuencia_meses, cm.observaciones, "
+    "       cm.id_equipo, cm.tipo_mantenimiento AS id_tipo, cm.tecnico_asignado_id AS id_tecnico, "
+    "       i.serie, i.serial_inventario_interno AS inventario, i.id_cliente, te.equipo, "
+    "       ma.brand AS marca, c.nombre AS cliente, m.tipo_mantenimiento AS tipo, p.nombre AS tecnico "
+    "FROM cronograma_mantenimientos cm "
+    "LEFT JOIN inventario i ON i.id = cm.id_equipo "
+    "LEFT JOIN tipo_equipo te ON te.id = i.id_equipo "
+    "LEFT JOIN marcas ma ON ma.id = i.marca "
+    "LEFT JOIN clientes c ON c.id = i.id_cliente "
+    "LEFT JOIN mantenimientos m ON m.id = cm.tipo_mantenimiento "
+    "LEFT JOIN personal p ON p.id = cm.tecnico_asignado_id "
+)
+
+
+def equipos_cronograma():
+    """Equipos que se pueden programar: diccionarios id, serie, inventario, equipo, id_cliente, cliente."""
+    return _leer_catalogo(
+        "SELECT i.id, i.serie, i.serial_inventario_interno AS inventario, te.equipo, "
+        "       i.id_cliente, c.nombre AS cliente "
+        "FROM inventario i "
+        "LEFT JOIN tipo_equipo te ON te.id = i.id_equipo "
+        "LEFT JOIN clientes c ON c.id = i.id_cliente "
+        "ORDER BY c.nombre, i.serie;",
+        como_dict=True,
+    )
+
+
+def cronograma_entre(desde, hasta, hoy, estado=None, id_tecnico=None, id_cliente=None):
+    """Mantenimientos con fecha entre ``desde`` y ``hasta`` (incluidas), más antiguos primero.
+
+    ``estado`` admite 'vencido': pendientes con fecha anterior a ``hoy``. A diferencia de los
+    catálogos, si la consulta falla lanza el error: la página no debe decir "no hay nada
+    programado" cuando en realidad no pudo leer la tabla.
+    """
+    condiciones = ["cm.fecha_programada BETWEEN %s AND %s"]
+    parametros = [desde, hasta]
+    if estado == 'vencido':
+        condiciones.append("cm.estado = 'pendiente' AND cm.fecha_programada < %s")
+        parametros.append(hoy)
+    elif estado:
+        condiciones.append("cm.estado = %s")
+        parametros.append(estado)
+    if id_tecnico:
+        condiciones.append("cm.tecnico_asignado_id = %s")
+        parametros.append(id_tecnico)
+    if id_cliente:
+        condiciones.append("i.id_cliente = %s")
+        parametros.append(id_cliente)
+    consulta = (_CRONOGRAMA_SELECT + "WHERE " + " AND ".join(condiciones)
+                + " ORDER BY cm.fecha_programada, cm.id;")
+    with _cursor(dict_row) as cursor:
+        cursor.execute(consulta, parametros)
+        return cursor.fetchall()
+
+
+def obtener_cronograma(cronograma_id):
+    """Un mantenimiento programado (diccionario) o None."""
+    with _cursor(dict_row) as cursor:
+        cursor.execute(_CRONOGRAMA_SELECT + "WHERE cm.id = %s;", (cronograma_id,))
+        return cursor.fetchone()
+
+
+def programar_mantenimientos(filas):
+    """Inserta las fechas en UNA transacción; devuelve ``(creados, omitidos)``.
+
+    ``filas``: [{id_equipo, tipo_mantenimiento, frecuencia_meses, fecha_programada,
+    tecnico_asignado_id, observaciones}]. Se omite la fecha que ya esté programada para el mismo
+    equipo y tipo de mantenimiento, así repetir el formulario no duplica el cronograma.
+    """
+    consulta = (
+        "INSERT INTO cronograma_mantenimientos "
+        "(id_equipo, tipo_mantenimiento, frecuencia_meses, fecha_programada, tecnico_asignado_id, observaciones) "
+        "SELECT %(id_equipo)s::int, %(tipo_mantenimiento)s::int, %(frecuencia_meses)s::int, "
+        "       %(fecha_programada)s::date, %(tecnico_asignado_id)s::int, %(observaciones)s::text "
+        "WHERE NOT EXISTS (SELECT 1 FROM cronograma_mantenimientos "
+        "                  WHERE id_equipo = %(id_equipo)s::int "
+        "                    AND tipo_mantenimiento = %(tipo_mantenimiento)s::int "
+        "                    AND fecha_programada = %(fecha_programada)s::date);"
+    )
+    creados = 0
+    with _cursor() as cursor:
+        for fila in filas:
+            cursor.execute(consulta, fila)
+            creados += cursor.rowcount
+    logger.info("Cronograma: %s fechas creadas, %s ya existían", creados, len(filas) - creados)
+    return creados, len(filas) - creados
+
+
+def actualizar_cronograma(cronograma_id, estado, fecha_programada, id_tecnico, observaciones):
+    """Actualiza un mantenimiento programado; devuelve False si no existe."""
+    with _cursor() as cursor:
+        cursor.execute(
+            "UPDATE cronograma_mantenimientos "
+            "SET estado = %s, fecha_programada = %s, tecnico_asignado_id = %s, observaciones = %s "
+            "WHERE id = %s;",
+            (estado, fecha_programada, id_tecnico, observaciones, cronograma_id),
+        )
+        return cursor.rowcount > 0
+
+
 # ----------------------------------------INVENTARIO-------------------------------------------------
 
 class InventarioDuplicado(Exception):

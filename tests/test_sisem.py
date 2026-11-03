@@ -710,5 +710,127 @@ class CargaExcel(unittest.TestCase):
         self.assertIn('máximo de 1000 filas', r.get_data(as_text=True))
 
 
+class Cronograma(unittest.TestCase):
+    VALIDO = {'csrf_token': 'token-de-prueba', 'id_equipo': '4', 'tipo_mantenimiento': '1',
+              'fecha_programada': '2026-01-31', 'frecuencia_meses': '0', 'tecnico_asignado_id': '1',
+              'observaciones': 'Revisar <filtro>'}
+
+    def setUp(self):
+        helpers.reiniciar()
+        self.c = cliente_sesion()
+
+    def programar(self, **cambios):
+        return self.c.post('/mantenimiento/planificado/guardar', data=dict(self.VALIDO, **cambios))
+
+    def test_exige_login_y_csrf(self):
+        anonimo = sisem.test_client()
+        for url in ('/mantenimiento/planificado', '/mantenimiento/planificado/nuevo', '/mantenimiento/planificado/1'):
+            self.assertEqual(anonimo.get(url).status_code, 302, url)
+        sin_token = {k: v for k, v in self.VALIDO.items() if k != 'csrf_token'}
+        self.assertEqual(self.c.post('/mantenimiento/planificado/guardar', data=sin_token).status_code, 400)
+        self.programar()
+        self.assertEqual(self.c.post('/mantenimiento/planificado/1/actualizar', data={'estado': 'realizado'}).status_code, 400)
+
+    def test_vistas_sin_datos_y_parametros_raros(self):
+        for url in ('/mantenimiento/planificado', '/mantenimiento/planificado?vista=anio',
+                    '/mantenimiento/planificado?anio=abc&mes=99&estado=<x>&tecnico=z&vista=otra',
+                    '/mantenimiento/planificado?anio=1500', '/mantenimiento/planificado/nuevo',
+                    '/mantenimiento/planificado/nuevo?fecha=basura'):
+            r = self.c.get(url)
+            self.assertEqual(r.status_code, 200, url)
+            self.assertNotRegex(r.get_data(as_text=True), r'<script(?![^>]*\bsrc=)')
+            self.assertNotIn('style=', r.get_data(as_text=True))
+
+    def test_programar_una_vez_y_calendario(self):
+        r = self.programar()
+        self.assertEqual(r.status_code, 302)
+        self.assertIn('anio=2026', r.headers['Location'])
+        self.assertIn('mes=1', r.headers['Location'])
+        html = self.c.get(r.headers['Location']).get_data(as_text=True)
+        self.assertIn('1 fecha programada', html)
+        self.assertIn('Enero 2026', html)
+        self.assertIn('Concentrador de O2', html)
+        self.assertIn('href="/mantenimiento/planificado/1"', html)
+        self.assertIn('Clínica &lt;Norte&gt; &amp; Cía', html)     # escapado
+        self.assertIn('Juan Pérez', html)
+
+    def test_frecuencia_genera_fechas_y_no_duplica(self):
+        r = self.programar(frecuencia_meses='3')
+        self.assertIn('creados=4', r.headers['Location'])
+        fechas = [str(c['fecha_programada']) for c in helpers.CRONOGRAMA.values()]
+        self.assertEqual(fechas, ['2026-01-31', '2026-04-30', '2026-07-31', '2026-10-31'])    # abril no tiene 31
+        self.assertEqual({c['frecuencia_meses'] for c in helpers.CRONOGRAMA.values()}, {3})
+        r = self.programar(frecuencia_meses='3')
+        self.assertIn('creados=0', r.headers['Location'])
+        self.assertIn('omitidos=4', r.headers['Location'])
+        self.assertEqual(len(helpers.CRONOGRAMA), 4)
+
+    def test_frecuencia_mensual_cruza_de_anio(self):
+        self.programar(frecuencia_meses='1', fecha_programada='2026-11-15')
+        fechas = [str(c['fecha_programada']) for c in helpers.CRONOGRAMA.values()]
+        self.assertEqual((len(fechas), fechas[0], fechas[2], fechas[-1]), (12, '2026-11-15', '2027-01-15', '2027-10-15'))
+
+    def test_validaciones(self):
+        casos = {'equipo': {'id_equipo': '999'}, 'inyección': {'id_equipo': '4 OR 1=1'},
+                 'tipo': {'tipo_mantenimiento': '99'}, 'fecha': {'fecha_programada': '2026-02-31'},
+                 'año': {'fecha_programada': '1500-01-01'}, 'frecuencia': {'frecuencia_meses': '5'},
+                 'técnico': {'tecnico_asignado_id': '77'}, 'texto largo': {'observaciones': 'x' * 1001}}
+        for nombre, cambios in casos.items():
+            with self.subTest(nombre):
+                r = self.programar(**cambios)
+                self.assertEqual(r.status_code, 400)
+                self.assertIn('alert-error', r.get_data(as_text=True))
+        self.assertEqual(helpers.CRONOGRAMA, {})
+
+    def test_vista_anual_y_estados(self):
+        from datetime import date
+        self.programar(fecha_programada='2020-03-10')          # pendiente en el pasado: vencido
+        html = self.c.get('/mantenimiento/planificado?vista=anio&anio=2020').get_data(as_text=True)
+        self.assertIn('crono-marca crono-vencido', html)
+        self.assertIn('10/03/2020 · Vencido', html)
+        self.assertIn('MED_0077', html)
+        filtrado = self.c.get('/mantenimiento/planificado?vista=anio&anio=2020&estado=realizado').get_data(as_text=True)
+        self.assertIn('No hay mantenimientos en 2020 con esos filtros', filtrado)
+        self.assertEqual(date(2020, 3, 10), helpers.CRONOGRAMA[1]['fecha_programada'])
+
+    def test_detalle_y_actualizar(self):
+        self.programar(fecha_programada='2026-05-20')
+        html = self.c.get('/mantenimiento/planificado/1').get_data(as_text=True)
+        self.assertIn('value="2026-05-20"', html)
+        self.assertIn('Revisar &lt;filtro&gt;', html)
+        r = self.c.post('/mantenimiento/planificado/1/actualizar', data={
+            'csrf_token': 'token-de-prueba', 'estado': 'realizado', 'fecha_programada': '2026-06-02',
+            'tecnico_asignado_id': '', 'observaciones': ' Listo '})
+        self.assertEqual(r.status_code, 302)
+        self.assertIn('mes=6', r.headers['Location'])
+        guardado = helpers.CRONOGRAMA[1]
+        self.assertEqual((guardado['estado'], str(guardado['fecha_programada']), guardado['tecnico_asignado_id'],
+                          guardado['observaciones']), ('realizado', '2026-06-02', None, 'Listo'))
+        self.assertIn('crono-realizado', self.c.get(r.headers['Location']).get_data(as_text=True))
+
+    def test_actualizar_rechaza_datos_invalidos_e_inexistentes(self):
+        self.programar()
+        base = {'csrf_token': 'token-de-prueba', 'estado': 'realizado', 'fecha_programada': '2026-06-02'}
+        for cambios in ({'estado': 'hackeado'}, {'fecha_programada': 'ayer'}, {'tecnico_asignado_id': '77'}):
+            self.assertEqual(self.c.post('/mantenimiento/planificado/1/actualizar', data=dict(base, **cambios)).status_code, 400)
+        self.assertEqual(helpers.CRONOGRAMA[1]['estado'], 'pendiente')
+        self.assertEqual(self.c.get('/mantenimiento/planificado/999').status_code, 404)
+        self.assertEqual(self.c.post('/mantenimiento/planificado/999/actualizar', data=base).status_code, 404)
+
+    def test_si_falla_la_base_no_dice_que_no_hay_nada(self):
+        original = helpers.fake.cronograma_entre
+        helpers.fake.cronograma_entre = lambda *a, **k: (_ for _ in ()).throw(RuntimeError('tabla no existe SECRETO'))
+        anterior = sisem.config.get('PROPAGATE_EXCEPTIONS')
+        sisem.config['PROPAGATE_EXCEPTIONS'] = False
+        try:
+            r = self.c.get('/mantenimiento/planificado')
+        finally:
+            helpers.fake.cronograma_entre = original
+            sisem.config['PROPAGATE_EXCEPTIONS'] = anterior
+        self.assertEqual(r.status_code, 500)
+        self.assertNotIn('SECRETO', r.get_data(as_text=True))
+        self.assertNotIn('No hay mantenimientos', r.get_data(as_text=True))
+
+
 if __name__ == '__main__':
     unittest.main()

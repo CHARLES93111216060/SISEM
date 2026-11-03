@@ -32,6 +32,7 @@ def reiniciar():
     REPORTES.clear()
     HOJAS.clear()
     INVENTARIO_GUARDADO.clear()
+    CRONOGRAMA.clear()
 
 
 def guardar(reporte_id, equipo, datos, tecnico=1, cliente=7, fecha='2026-10-14'):
@@ -118,6 +119,63 @@ def _buscar_hojas(texto=''):
                           'fecha_creacion': '2026-10-23 09:15:00'})
     return filas
 
+
+# --- cronograma -------------------------------------------------------------------------------
+CRONOGRAMA = {}
+
+
+def _fila_cronograma(cid):
+    c = CRONOGRAMA[cid]
+    equipo = next(e for e in INVENTARIO if e['id'] == c['id_equipo'])
+    tecnico = dict(fake.personal()).get(c['tecnico_asignado_id'])
+    return {'id': cid, 'fecha_programada': c['fecha_programada'], 'estado': c['estado'],
+            'frecuencia_meses': c['frecuencia_meses'], 'observaciones': c['observaciones'],
+            'id_equipo': c['id_equipo'], 'id_tipo': c['tipo_mantenimiento'], 'id_tecnico': c['tecnico_asignado_id'],
+            'serie': equipo['serie'], 'inventario': equipo['inventario'], 'id_cliente': equipo.get('id_cliente', 3),
+            'equipo': equipo['equipo'], 'marca': equipo['marca'], 'cliente': equipo['entidad'],
+            'tipo': dict(fake.servicios()).get(c['tipo_mantenimiento']), 'tecnico': tecnico}
+
+
+def _cronograma_entre(desde, hasta, hoy, estado=None, id_tecnico=None, id_cliente=None):
+    filas = []
+    for cid in sorted(CRONOGRAMA, key=lambda i: (CRONOGRAMA[i]['fecha_programada'], i)):
+        f = _fila_cronograma(cid)
+        if not desde <= f['fecha_programada'] <= hasta:
+            continue
+        if estado == 'vencido' and not (f['estado'] == 'pendiente' and f['fecha_programada'] < hoy):
+            continue
+        if estado and estado != 'vencido' and f['estado'] != estado:
+            continue
+        if (id_tecnico and f['id_tecnico'] != id_tecnico) or (id_cliente and f['id_cliente'] != id_cliente):
+            continue
+        filas.append(f)
+    return filas
+
+
+def _programar(filas):
+    creados = 0
+    for fila in filas:
+        clave = (fila['id_equipo'], fila['tipo_mantenimiento'], fila['fecha_programada'])
+        if any((c['id_equipo'], c['tipo_mantenimiento'], c['fecha_programada']) == clave for c in CRONOGRAMA.values()):
+            continue
+        CRONOGRAMA[max(CRONOGRAMA, default=0) + 1] = dict(fila, estado='pendiente')
+        creados += 1
+    return creados, len(filas) - creados
+
+
+def _actualizar_cronograma(cid, estado, fecha, id_tecnico, observaciones):
+    CRONOGRAMA[cid].update(estado=estado, fecha_programada=fecha, tecnico_asignado_id=id_tecnico,
+                           observaciones=observaciones)
+    return True
+
+
+fake.equipos_cronograma = lambda: [
+    {'id': e['id'], 'serie': e['serie'], 'inventario': e['inventario'], 'equipo': e['equipo'],
+     'id_cliente': e.get('id_cliente', 3), 'cliente': e['entidad']} for e in INVENTARIO]
+fake.cronograma_entre = _cronograma_entre
+fake.obtener_cronograma = lambda cid: _fila_cronograma(cid) if cid in CRONOGRAMA else None
+fake.programar_mantenimientos = _programar
+fake.actualizar_cronograma = _actualizar_cronograma
 
 # --- inventario -------------------------------------------------------------------------------
 INVENTARIO_GUARDADO = []
