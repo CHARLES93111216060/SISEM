@@ -519,6 +519,83 @@ def generar_hoja_vida_pdf(hoja_id):
 
 
 # ----------------------------------------------------------------------------------------
+# Reporte general / reporte de servicio (formato FT-GC-041, Formatos/REPORTE DE SERVICIO.pdf)
+# ----------------------------------------------------------------------------------------
+FORMATO_REPORTE_GENERAL = {
+    'empresa': 'MULTILINK INGENIERIA SAS',
+    'logo': 'images/pdf_logo.png',          # cambia por el logo de la empresa si lo agregas a static/images
+    'codigo': 'FT-GC-041',
+    'version': '003',
+    'fecha_revision': 'MARZO/2026',
+    'fecha_aprobacion': '2024 - 08 - 01',
+}
+FILAS_REPUESTOS_RG = 5
+
+
+def nombre_archivo_reporte_general(reporte_id, inventario=''):
+    """'reporte_servicio_15_INV_0040.pdf' (solo caracteres seguros para un nombre de archivo)."""
+    base = re.sub(r'[^A-Za-z0-9_.-]', '_', _texto(inventario).strip())[:80].strip('._')
+    return f"reporte_servicio_{reporte_id}{'_' + base if base else ''}.pdf"
+
+
+def contexto_reporte_general(reporte_id):
+    """Datos del reporte general listos para ``pdf/reporte_general.html``."""
+    fila = db.obtener_reporte_general(reporte_id)
+    if not fila:
+        raise ReporteNoEncontrado(f"No existe el reporte general {reporte_id}")
+
+    info = fila.get('informacion')
+    if not isinstance(info, dict):              # jsonb llega como dict; cualquier otra cosa se ignora
+        info = {}
+    equipo = info.get('equipo') if isinstance(info.get('equipo'), dict) else {}
+
+    def nombre(dato):
+        """Los catálogos se guardan como {'id', 'nombre'}; acepta también texto plano."""
+        return _texto(dato.get('nombre') if isinstance(dato, dict) else dato)
+
+    repuestos = [r for r in info.get('repuestos') or [] if isinstance(r, dict)][:FILAS_REPUESTOS_RG]
+    repuestos += [{}] * (FILAS_REPUESTOS_RG - len(repuestos))
+    ubicacion = ' / '.join(t for t in (_texto(info.get('departamento')), _texto(fila['ciudad'])) if t)
+
+    return {
+        'f': FORMATO_REPORTE_GENERAL,
+        'rg': {
+            'numero': fila['id'],
+            'fecha': _fecha(info.get('fecha')),
+            'cliente': _texto(fila['cliente']),
+            'solicitante': _texto(fila['solicitante']),
+            'area': _texto(fila['area']),
+            'ubicacion': ubicacion,
+            'direccion': _texto(info.get('direccion')),
+            'equipo': nombre(equipo.get('tipo_equipo')),
+            'marca': nombre(equipo.get('marca')),
+            'modelo': _texto(equipo.get('modelo')),
+            'serie': _texto(equipo.get('serie') or fila['serie_inventario']),
+            'inventario': _texto(equipo.get('inventario')),
+            'servicio': _texto(fila['servicio']),
+            'descripcion': _texto(info.get('descripcion')),
+            'diagnostico': _texto(info.get('diagnostico')),
+            'actividad': _texto(info.get('actividad')),
+            'observaciones': _texto(info.get('observaciones')),
+            'estado_final': _texto(info.get('estado_final')),
+            'fecha_entrega': _fecha(fila['fecha_entrega']),
+            'recibido_por': _texto(info.get('recibido_por')),
+            'tecnico': _texto(fila['tecnico']),
+            'tecnico_cargo': _texto(fila['tecnico_cargo']),
+        },
+        'repuestos': repuestos,
+        'asset': pdf_asset,
+    }
+
+
+def generar_reporte_general_pdf(reporte_id):
+    """Devuelve ``(bytes del PDF, nombre de archivo)`` de un reporte general."""
+    contexto = contexto_reporte_general(reporte_id)
+    pdf = _html_a_pdf(render_template('pdf/reporte_general.html', **contexto))
+    return pdf, nombre_archivo_reporte_general(reporte_id, contexto['rg']['inventario'])
+
+
+# ----------------------------------------------------------------------------------------
 # Conversión HTML -> PDF (compartida por reportes y hojas de vida)
 # ----------------------------------------------------------------------------------------
 def ruta_local_permitida(url):

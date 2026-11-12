@@ -1,0 +1,79 @@
+{% extends "layout/base.html" %}
+{% block title %}Consultar reportes generales{% endblock %}
+{% block content %}
+<div class="dashboard-shell">
+    <section class="page-hero">
+        <div>
+            <span class="eyebrow">Módulo de mantenimiento</span>
+            <h2>Consultar reportes generales</h2>
+            <p>Consulta los reportes generales de los equipos registrados.</p>
+        </div>
+        <div class="hero-actions">
+            <a class="btn btn-primary" href="{{ url_for('crear_reporte_general') }}">Crear reporte general</a>
+            <a class="btn btn-secondary" href="{{ url_for('mantenimiento_correctivo') }}">Volver</a>
+        </div>
+    </section>
+
+    <div class="page-panel">
+        <div class="panel-head">
+            <div>
+                <h3>Reportes generales</h3>
+                <p>{{ reportes|length }} {{ 'reporte' if reportes|length == 1 else 'reportes' }}</p>
+            </div>
+        </div>
+
+        {% if reportes %}
+        <input type="search" class="form-control mb-3" id="filtro_reportes" autocomplete="off"
+               data-filtro-tabla="tabla_reportes" aria-label="Filtrar reportes"
+               placeholder="Filtrar por cliente, serie, área, técnico, etc.">
+        <div class="table-responsive">
+            <table id="tabla_reportes">
+                <thead>
+                    <tr>
+                        <th>N°</th>
+                        <th>Fecha</th>
+                        <th>Cliente</th>
+                        <th>Solicitante</th>
+                        <th>Área / ciudad</th>
+                        <th>Equipo</th>
+                        <th>Servicio</th>
+                        <th>Técnico</th>
+                        <th>Entrega</th>
+                        <th><span class="sr-only">Acciones</span></th>
+                    </tr>
+                </thead>
+                <tbody>
+                    {% for reporte in reportes %}
+                    <tr>
+                        <td><strong>{{ reporte.id }}</strong></td>
+                        <td>{{ reporte.fecha or '—' }}</td>
+                        <td>{{ reporte.cliente or '—' }}</td>
+                        <td>{{ reporte.solicitante or '—' }}</td>
+                        <td>{{ reporte.area or '—' }}{% if reporte.ciudad %} · {{ reporte.ciudad }}{% endif %}</td>
+                        <td>{{ reporte.serie or '—' }}{% if reporte.tipo_equipo %} · {{ reporte.tipo_equipo }}{% endif %}</td>
+                        <td>{{ reporte.servicio or '—' }}</td>
+                        <td>{{ reporte.tecnico or '—' }}</td>
+                        <td>{{ reporte.fecha_entrega or '—' }}</td>
+                        <td class="acciones">
+                            <button type="button" class="btn btn-primary btn-sm js-descargar"
+                                    data-url="{{ url_for('descargar_reporte_general', reporte_id=reporte.id) }}"
+                                    data-id="{{ reporte.id }}"
+                                    data-nombre="{{ nombre_pdf(reporte.id, reporte.inventario) }}">Descargar PDF</button>
+                        </td>
+                    </tr>
+                    {% endfor %}
+                </tbody>
+            </table>
+        </div>
+        <div id="mensajeHistorial" class="alert" role="status" hidden></div>
+        <p class="vacio" id="tabla_reportes_vacio" hidden>Ningún reporte coincide con la búsqueda.</p>
+        {% else %}
+        <p class="vacio">Todavía no hay reportes generales registrados.</p>
+        {% endif %}
+    </div>
+</div>
+{% endblock %}
+{% block scripts %}
+<script src="{{ url_for('static', filename='js/buscador.js') }}"></script>
+<script src="{{ url_for('static', filename='js/historial.js') }}"></script>
+{% endblock %}

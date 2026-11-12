@@ -1,5 +1,16 @@
-<div class="card mt-4">
-    <h2>Reporte general</h2>
-    <p>Este formulario todavía no está disponible. Para registrar un mantenimiento usa
-       <strong>Protocolo de mantenimiento</strong>.</p>
+
+<div class="dashboard-shell">
+    <section class="page-hero">
+        <div>
+            <span class="eyebrow">Módulo de mantenimiento</span>
+            <h2>Reporte general</h2>
+            <p>Consulta y gestiona el reporte general de los equipos registrados.</p>
+        </div>
+        <div class="hero-actions">
+            <a class="btn btn-primary" href="{{ url_for('crear_reporte_general') }}">Crear reporte general</a>
+            <a class="btn btn-primary" href="{{ url_for('consultar_reportes_generales') }}">Consultar reportes generales</a>
+        </div>
+    </section>
 </div>
+
+

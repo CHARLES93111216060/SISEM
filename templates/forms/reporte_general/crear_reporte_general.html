@@ -1,0 +1,214 @@
+{% extends "layout/base.html" %}
+{% block title %}Reporte general{% endblock %}
+{% block content %}
+{# «v» trae lo que el usuario escribió (si hubo un error se vuelve a mostrar) #}
+{% macro sel(campo, valor) %}{% if v.get(campo) == valor|string %} selected{% endif %}{% endmacro %}
+
+<div class="container-mt4">
+    <div class="card shadow-p4">
+        <div class="panel-head">
+            <div>
+                <span class="eyebrow">Formato PM_003 · Ingeniería Clínica</span>
+                <h2 class="mb-4">Nuevo reporte general</h2>
+            </div>
+            <a class="btn btn-secondary" href="{{ url_for('mantenimiento_correctivo') }}">Volver</a>
+            <a class="btn btn-secondary" href="{{ url_for('consultar_reportes_generales') }}">Consultar reporte general</a>
+        </div>
+
+        {% if guardado %}
+        <div class="alert alert-ok" role="status">
+            Reporte general N° {{ guardado }} guardado correctamente.
+            <a href="{{ url_for('descargar_reporte_general', reporte_id=guardado) }}">Descargar PDF</a>
+        </div>
+        {% endif %}
+        {% if error %}
+        <div class="alert alert-error" role="alert">{{ error }}</div>
+        {% endif %}
+
+        <form id="reporteGeneralForm" name="reporteGeneralForm" method="POST" autocomplete="off" action="{{ url_for('guardar_reporte_general') }}">
+            <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+
+            <!-- ========================= -->
+            <!-- Datos generales del cliente -->
+            <!-- ========================= -->
+            <h3 class="hv-titulo">Datos generales del cliente</h3>
+            <div class="hv-grid">
+                <div class="mb-3">
+                    <label class="form-label" for="rp-fecha">Fecha</label>
+                    <input type="date" class="form-control" id="rp-fecha" name="fecha" value="{{ v.get('fecha', '') }}" required>
+                </div>
+
+                <div class="mb-3">
+                    <label class="form-label" for="rp-cliente">Cliente</label>
+                    <select class="form-select" id="rp-cliente" name="cliente" required>
+                        <option value="">Selecciona un cliente</option>
+                        {% for cliente in clientes %}
+                            <option value="{{ cliente[0] }}"{{ sel('cliente', cliente[0]) }}>{{ cliente[1] }}</option>
+                        {% endfor %}
+                    </select>
+                </div>
+
+                <div class="mb-3">
+                    <label class="form-label" for="rp-solicitante">Solicitante</label>
+                    <input type="text" class="form-control" id="rp-solicitante" name="solicitante" maxlength="50" value="{{ v.get('solicitante', '') }}" required>
+                </div>
+
+                <div class="mb-3">
+                    <label class="form-label" for="rp-area">Área</label>
+                    <select class="form-select" id="rp-area" name="area" required>
+                        <option value="">Selecciona un área</option>
+                        {% for area in areas %}
+                            <option value="{{ area[0] }}"{{ sel('area', area[0]) }}>{{ area[1] }}</option>
+                        {% endfor %}
+                    </select>
+                </div>
+
+                <div class="mb-3">
+                    <label class="form-label" for="rp-ciudad">Ciudad</label>
+                    <input type="text" class="form-control" id="rp-ciudad" name="ciudad" maxlength="50" value="{{ v.get('ciudad', '') }}" required>
+                </div>
+
+                <div class="mb-3">
+                    <label class="form-label" for="rp-departamento">Departamento</label>
+                    <input type="text" class="form-control" id="rp-departamento" name="departamento" maxlength="50" value="{{ v.get('departamento', '') }}" required>
+                </div>
+
+                <div class="mb-3">
+                    <label class="form-label" for="rp-direccion">Dirección</label>
+                    <input type="text" class="form-control" id="rp-direccion" name="direccion" maxlength="120" value="{{ v.get('direccion', '') }}" required>
+                </div>
+            </div>
+
+            <!-- ========================= -->
+            <!-- Datos generales del equipo -->
+            <!-- ========================= -->
+            <h3 class="hv-titulo">Datos generales del equipo</h3>
+            <div class="hv-grid">
+                <div class="mb-3">
+                    <label class="form-label" for="rp-serie">N° de serie</label>
+                    <select class="form-select" id="rp-serie" name="serie" required>
+                        <option value="">Selecciona un equipo</option>
+                        {% for equipo in equipos %}
+                            <option value="{{ equipo.id }}"{{ sel('serie', equipo.id) }}>{{ equipo.serie }} · {{ equipo.tipo_equipo or 'Sin tipo' }}</option>
+                        {% endfor %}
+                    </select>
+                </div>
+
+                <div class="mb-3">
+                    <label class="form-label" for="rp-tipo">Tipo de equipo</label>
+                    <select class="form-select" id="rp-tipo" name="tipo_equipo" required>
+                        <option value="">Selecciona un tipo</option>
+                        {% for tipo in tipos %}
+                            <option value="{{ tipo[0] }}"{{ sel('tipo_equipo', tipo[0]) }}>{{ tipo[1] }}</option>
+                        {% endfor %}
+                    </select>
+                </div>
+
+                <div class="mb-3">
+                    <label class="form-label" for="rp-marca">Marca</label>
+                    <select class="form-select" id="rp-marca" name="marca" required>
+                        <option value="">Selecciona una marca</option>
+                        {% for marca in marcas %}
+                            <option value="{{ marca[0] }}"{{ sel('marca', marca[0]) }}>{{ marca[1] }}</option>
+                        {% endfor %}
+                    </select>
+                </div>
+
+                <div class="mb-3">
+                    <label class="form-label" for="rp-modelo">Modelo</label>
+                    <input type="text" class="form-control" id="rp-modelo" name="modelo" maxlength="50" value="{{ v.get('modelo', '') }}" required>
+                </div>
+
+                <div class="mb-3">
+                    <label class="form-label" for="rp-inventario">N° de inventario</label>
+                    <input type="text" class="form-control" id="rp-inventario" name="inventario" maxlength="50" value="{{ v.get('inventario', '') }}" required>
+                </div>
+
+                <div class="mb-3">
+                    <label class="form-label" for="rp-servicio">Tipo de servicio</label>
+                    <select class="form-select" id="rp-servicio" name="servicio" required>
+                        <option value="">Selecciona un servicio</option>
+                        {% for servicio in servicios %}
+                            <option value="{{ servicio[0] }}"{{ sel('servicio', servicio[0]) }}>{{ servicio[1] }}</option>
+                        {% endfor %}
+                    </select>
+                </div>
+            </div>
+
+            <!-- ========================= -->
+            <!-- Servicio realizado -->
+            <!-- ========================= -->
+            <h3 class="hv-titulo">Servicio realizado</h3>
+            <div class="mb-3">
+                <label class="form-label" for="rp-descripcion">Descripción de la falla o solicitud</label>
+                <textarea class="form-control" id="rp-descripcion" name="descripcion" rows="3" maxlength="2000" required>{{ v.get('descripcion', '') }}</textarea>
+            </div>
+            <div class="mb-3">
+                <label class="form-label" for="rp-diagnostico">Diagnóstico técnico</label>
+                <textarea class="form-control" id="rp-diagnostico" name="diagnostico" rows="3" maxlength="2000" required>{{ v.get('diagnostico', '') }}</textarea>
+            </div>
+            <div class="mb-3">
+                <label class="form-label" for="rp-actividad">Actividad realizada</label>
+                <textarea class="form-control" id="rp-actividad" name="actividad" rows="3" maxlength="2000" required>{{ v.get('actividad', '') }}</textarea>
+            </div>
+
+            <h3 class="hv-titulo">Repuestos y accesorios instalados</h3>
+            <div class="mb-3">
+                <table class="table table-bordered hv-accesorios">
+                    <thead>
+                        <tr>
+                            <th>Cantidad</th>
+                            <th>Descripción</th>
+                        </tr>
+                    </thead>
+                    <tbody id="repuestosTableBody">
+                        {% set cantidades = v.getlist('repuesto_cantidad') %}
+                        {% set descripciones = v.getlist('repuesto_descripcion') %}
+                        {% for n in range(filas_repuestos) %}
+                        <tr>
+                            <td><input type="number" class="form-control" name="repuesto_cantidad" min="1" max="9999" aria-label="Cantidad del repuesto {{ n + 1 }}" value="{{ cantidades[n] if n < cantidades|length else '' }}"></td>
+                            <td><input type="text" class="form-control" name="repuesto_descripcion" maxlength="120" aria-label="Descripción del repuesto {{ n + 1 }}" value="{{ descripciones[n] if n < descripciones|length else '' }}"></td>
+                        </tr>
+                        {% endfor %}
+                    </tbody>
+                </table>
+            </div>
+
+            <!-- ========================= -->
+            <!-- Cierre y entrega -->
+            <!-- ========================= -->
+            <h3 class="hv-titulo">Cierre y entrega</h3>
+            <div class="mb-3">
+                <label class="form-label" for="rp-observaciones">Observaciones</label>
+                <textarea class="form-control" id="rp-observaciones" name="observaciones" rows="3" maxlength="2000">{{ v.get('observaciones', '') }}</textarea>
+            </div>
+            <div class="hv-grid">
+                <div class="mb-3">
+                    <label class="form-label" for="rp-estado">Estado final del equipo</label>
+                    <input type="text" class="form-control" id="rp-estado" name="estado_final" maxlength="50" value="{{ v.get('estado_final', '') }}" required>
+                </div>
+                <div class="mb-3">
+                    <label class="form-label" for="rp-entrega">Fecha de entrega</label>
+                    <input type="date" class="form-control" id="rp-entrega" name="fecha_entrega" value="{{ v.get('fecha_entrega', '') }}" required>
+                </div>
+                <div class="mb-3">
+                    <label class="form-label" for="rp-recibido">Recibido por</label>
+                    <input type="text" class="form-control" id="rp-recibido" name="recibido_por" maxlength="50" value="{{ v.get('recibido_por', '') }}" required>
+                </div>
+                <div class="mb-3">
+                    <label class="form-label" for="rp-entregado">Entregado por</label>
+                    <select class="form-select" id="rp-entregado" name="entregado_por" required>
+                        <option value="">Selecciona un técnico</option>
+                        {% for tecnico in personal %}
+                            <option value="{{ tecnico[0] }}"{{ sel('entregado_por', tecnico[0]) }}>{{ tecnico[1] }}</option>
+                        {% endfor %}
+                    </select>
+                </div>
+            </div>
+            <div class="hv-acciones">
+                <button type="submit" class="btn btn-primary">Guardar reporte</button>
+            </div>
+        </form>
+    </div>
+</div>
+{% endblock %}

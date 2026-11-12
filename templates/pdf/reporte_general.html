@@ -1,0 +1,275 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+<meta charset="utf-8">
+<title>Reporte de servicio N° {{ rg.numero }}</title>
+{#
+  Réplica de Formatos/REPORTE DE SERVICIO.pdf (FT-GC-041).
+  Se convierte a PDF con WeasyPrint (informes.generar_reporte_general_pdf).
+  Jinja2 escapa todos los datos, así que el texto del usuario no puede inyectar HTML.
+#}
+<style>
+@font-face { font-family: 'Jost'; font-weight: 400; src: url('{{ asset("fonts/Jost-Regular.ttf") }}'); }
+@font-face { font-family: 'Jost'; font-weight: 700; src: url('{{ asset("fonts/Jost-Bold.ttf") }}'); }
+
+/* El encabezado se repite en cada hoja y lleva "PÁGINA: n DE total" */
+@page {
+  size: Letter;
+  margin: 3.45cm 1.3cm 1.1cm;
+  @top-center { content: element(encabezado); width: 100%; vertical-align: bottom; padding-bottom: 6pt; }
+}
+.encabezado { position: running(encabezado); }
+.pag::after { content: counter(page) " DE " counter(pages); }
+
+* { box-sizing: border-box; }
+body {
+  font-family: 'Jost', 'Liberation Sans', Arial, sans-serif;
+  font-size: 8.6pt;
+  line-height: 1.25;
+  color: #1d2328;
+  margin: 0;
+}
+
+table { border-collapse: collapse; width: 100%; table-layout: fixed; }
+td, th {
+  border: 0.75pt solid #2b2b2b;
+  padding: 1.5pt 4pt;
+  height: 14pt;
+  vertical-align: middle;
+  text-align: center;
+  font-weight: normal;
+  overflow-wrap: anywhere;
+}
+th { font-weight: 700; }
+.lbl { font-weight: 700; text-align: right; }
+
+/* Franja azul de título (como el formato) */
+.band, td.band {
+  background: #4f81bd;
+  color: #fff;
+  font-weight: 700;
+  text-align: center;
+  padding: 1.5pt 0;
+  border: 0.75pt solid #2b2b2b;
+}
+.gap { height: 5pt; }
+.texto { white-space: pre-line; }
+
+/* Encabezado */
+.hd td { height: 18pt; }
+.hd .logo { padding: 4pt 10pt; }
+.hd .logo img { width: 100%; }
+.hd .titulo { font-size: 12pt; font-weight: 700; }
+.hd .dato { text-align: left; font-weight: 700; font-size: 9pt; }
+
+/* Dos columnas */
+table.cols > tbody > tr > td { border: 0; padding: 0; height: auto; vertical-align: top; }
+
+/* Cajas de texto largo */
+.caja { padding: 8pt 8pt; min-height: 1.15cm; text-align: center; vertical-align: middle; }
+.caja-alta { min-height: 2.2cm; }
+.caja div { white-space: pre-line; }
+
+/* Repuestos / observaciones */
+.repuestos td { height: 15pt; }
+.obs { height: 105pt; vertical-align: middle; }
+
+.leyenda { text-align: center; margin: 6pt 0; font-size: 8.6pt; }
+.leyenda b { font-style: italic; }
+
+/* Firmas */
+.firma { text-align: left; vertical-align: top; height: 62pt; padding: 3pt 4pt; }
+.firma .nombre { text-align: center; font-weight: 700; margin-top: 7pt; min-height: 11pt; }
+.firma .linea { border-bottom: 0.75pt solid #2b2b2b; margin: 2pt 6pt 3pt; }
+
+.pie td { height: 13pt; }
+.derechos { text-align: center; margin-top: 3pt; }
+.derechos b { font-style: italic; }
+
+.no-corte { page-break-inside: avoid; break-inside: avoid; }
+</style>
+</head>
+<body>
+
+<!-- ===================== ENCABEZADO (se repite en cada hoja) ===================== -->
+<table class="hd encabezado">
+  <colgroup><col style="width:21%"><col style="width:46%"><col style="width:33%"></colgroup>
+  <tr>
+    <td class="logo" rowspan="4"><img src="{{ asset(f.logo) }}" alt="{{ f.empresa }}"></td>
+    <td class="titulo" rowspan="4">REPORTE DE SERVICIO</td>
+    <td class="dato">CÓDIGO: {{ f.codigo }}</td>
+  </tr>
+  <tr><td class="dato">VERSIÓN: {{ f.version }}</td></tr>
+  <tr><td class="dato">FECHA DE REVISIÓN: {{ f.fecha_revision }}</td></tr>
+  <tr><td class="dato">PÁGINA: <span class="pag"></span></td></tr>
+</table>
+
+<!-- ===================== N° DE REPORTE / FECHA ===================== -->
+<table class="cols">
+  <colgroup><col style="width:30%"><col style="width:20%"><col style="width:50%"></colgroup>
+  <tr>
+    <td>
+      <table><colgroup><col style="width:50%"><col></colgroup>
+        <tr><td class="band">N° DE REPORTE:</td><td><b>{{ rg.numero }}</b></td></tr>
+      </table>
+    </td>
+    <td></td>
+    <td>
+      <table><colgroup><col style="width:30%"><col></colgroup>
+        <tr><td class="band">FECHA:</td><td>{{ rg.fecha }}</td></tr>
+      </table>
+    </td>
+  </tr>
+</table>
+<div class="gap"></div>
+
+<!-- ===================== CLIENTE / EQUIPO ===================== -->
+<table class="cols">
+  <colgroup><col style="width:49%"><col style="width:2%"><col style="width:49%"></colgroup>
+  <tr>
+    <td>
+      <div class="band">INFORMACION DEL CLIENTE</div>
+      <table>
+        <colgroup><col style="width:30%"><col></colgroup>
+        <tr><td class="lbl">Cliente:</td><td>{{ rg.cliente }}</td></tr>
+        <tr><td class="lbl">Solicitante:</td><td>{{ rg.solicitante }}</td></tr>
+        <tr><td class="lbl">Área/Servicio:</td><td>{{ rg.area }}</td></tr>
+        <tr><td class="lbl">Depto/Ciudad:</td><td>{{ rg.ubicacion }}</td></tr>
+        <tr><td class="lbl">Dirección:</td><td>{{ rg.direccion }}</td></tr>
+      </table>
+    </td>
+    <td></td>
+    <td>
+      <div class="band">DATOS DEL EQUIPO</div>
+      <table>
+        <colgroup><col style="width:30%"><col></colgroup>
+        <tr><td class="lbl">Nombre:</td><td>{{ rg.equipo }}</td></tr>
+        <tr><td class="lbl">Marca:</td><td>{{ rg.marca }}</td></tr>
+        <tr><td class="lbl">Modelo:</td><td>{{ rg.modelo }}</td></tr>
+        <tr><td class="lbl">Serie:</td><td>{{ rg.serie }}</td></tr>
+        <tr><td class="lbl">N° Inventario:</td><td>{{ rg.inventario }}</td></tr>
+      </table>
+    </td>
+  </tr>
+</table>
+<div class="gap"></div>
+
+<!-- ===================== TIPO DE SERVICIO ===================== -->
+<table class="cols">
+  <colgroup><col style="width:49%"><col></colgroup>
+  <tr>
+    <td>
+      <div class="band">TIPO DE SERVICIO</div>
+      <table><tr><td>{{ rg.servicio }}</td></tr></table>
+    </td>
+    <td></td>
+  </tr>
+</table>
+<div class="gap"></div>
+
+<!-- ===================== DESCRIPCIÓN / DIAGNÓSTICO / ACTIVIDAD ===================== -->
+<div class="band">DESCRIPCIÓN DE LA FALLA O SOLICITUD</div>
+<table><tr><td class="caja"><div>{{ rg.descripcion }}</div></td></tr></table>
+<div class="gap"></div>
+
+<div class="band">DIAGNÓSTICO TÉCNICO</div>
+<table><tr><td class="caja"><div>{{ rg.diagnostico }}</div></td></tr></table>
+<div class="gap"></div>
+
+<div class="band">ACTIVIDAD REALIZADA</div>
+<table><tr><td class="caja caja-alta"><div>{{ rg.actividad }}</div></td></tr></table>
+<div class="gap"></div>
+
+<!-- ===================== REPUESTOS / OBSERVACIONES ===================== -->
+<table class="cols no-corte">
+  <colgroup><col style="width:58%"><col style="width:2.5%"><col></colgroup>
+  <tr>
+    <td>
+      <div class="band">REPUESTOS Y ACCESORIOS INSTALADOS</div>
+      <table class="repuestos">
+        <colgroup><col style="width:16%"><col></colgroup>
+        <tr><td>Cant.</td><td>Descripción.</td></tr>
+        {% for r in repuestos %}
+        <tr><td>{{ r.cantidad if r.cantidad is not none }}</td><td>{{ r.descripcion or '' }}</td></tr>
+        {% endfor %}
+      </table>
+    </td>
+    <td></td>
+    <td>
+      <div class="band">OBSERVACIONES</div>
+      <table><tr><td class="obs texto">{{ rg.observaciones }}</td></tr></table>
+    </td>
+  </tr>
+</table>
+<div class="gap"></div>
+
+<!-- ===================== ESTADO FINAL / FECHA DE ENTREGA ===================== -->
+<table class="cols no-corte">
+  <colgroup><col style="width:44%"><col style="width:16.5%"><col style="width:20%"><col></colgroup>
+  <tr>
+    <td>
+      <div class="band">ESTADO FINAL DEL EQUIPO</div>
+      <table><tr><td>{{ rg.estado_final }}</td></tr></table>
+    </td>
+    <td></td>
+    <td>
+      <div class="band">FECHA DE ENTREGA</div>
+      <table><tr><td>{{ rg.fecha_entrega }}</td></tr></table>
+    </td>
+    <td></td>
+  </tr>
+</table>
+
+<p class="leyenda">La firma y aprobación de este reporte puede autorizar a <b>{{ f.empresa }}</b> la facturación en los servicios y/o partes instaladas.</p>
+
+<!-- ===================== FIRMAS ===================== -->
+<table class="cols no-corte">
+  <colgroup><col style="width:32%"><col style="width:2%"><col style="width:32%"><col style="width:2%"><col></colgroup>
+  <tr>
+    <td>
+      <table><tr><td class="firma">
+        Recibido en el Servicio por:
+        <div class="nombre">{{ rg.recibido_por }}</div>
+        <div class="linea"></div>
+        Cargo:
+      </td></tr></table>
+    </td>
+    <td></td>
+    <td>
+      <table><tr><td class="firma">
+        Vo.Bo. Por:
+        <div class="nombre"></div>
+        <div class="linea"></div>
+        Cargo:
+      </td></tr></table>
+    </td>
+    <td></td>
+    <td>
+      <table><tr><td class="firma">
+        Entregado/ Realizado por:
+        <div class="nombre">{{ rg.tecnico }}</div>
+        <div class="linea"></div>
+        Cargo: <b>{{ rg.tecnico_cargo }}</b>
+      </td></tr></table>
+    </td>
+  </tr>
+</table>
+<div class="gap"></div>
+
+<!-- ===================== PIE ===================== -->
+<table class="pie no-corte">
+  <colgroup><col style="width:44%"><col style="width:9%"><col></colgroup>
+  <tr>
+    <td>Elaborado por: Departamento de ingeniería.</td>
+    <td rowspan="2"></td>
+    <td>Revisado por: Jefe de Mantenimiento.</td>
+  </tr>
+  <tr>
+    <td>Aprobado por: Gerencia.</td>
+    <td>Fecha de Aprobación: {{ f.fecha_aprobacion }}</td>
+  </tr>
+</table>
+<p class="derechos">Todos los derechos reservados por <b>{{ f.empresa }}</b>.</p>
+
+</body>
+</html>

@@ -22,6 +22,7 @@ load_dotenv()
 
 from flask import (Flask, abort, jsonify, redirect, render_template, request,  # noqa: E402
                 send_file, session, url_for)
+from werkzeug.datastructures import MultiDict  # noqa: E402
 from werkzeug.exceptions import HTTPException  # noqa: E402
 from werkzeug.middleware.proxy_fix import ProxyFix  # noqa: E402
 from werkzeug.security import check_password_hash, generate_password_hash  # noqa: E402
@@ -294,7 +295,7 @@ def ver_clientes():
 
 # Módulos del menú que aún no existen: muestran una página clara en lugar de un 404.
 PROXIMAMENTE = {
-    ('mantenimiento', 'solicitudes'): 'Solicitudes de mantenimiento',
+    # ('mantenimiento', 'solicitudes'): 'Solicitudes de mantenimiento',
     ('comercial', 'clientes'): 'Facturación',
     ('comercial', 'ordenes'): 'Órdenes de compra',
     ('comercial', 'inventario'): 'Inventario',
@@ -1202,6 +1203,183 @@ def actualizar_cronograma(cronograma_id):
         return _pagina_detalle_cronograma(fila, error="No se pudo guardar. Inténtalo de nuevo.", codigo=500)
     return redirect(url_for('cronograma', anio=fecha.year, mes=fecha.month, aviso='actualizado'))
 
+# -------------------------------------------REPORTE GENERAL---------------------------------------------
+_RG_FILAS_REPUESTOS = 5
+# Campo de texto del formulario -> (etiqueta para los mensajes, longitud máxima, obligatorio)
+_RG_TEXTO = {
+    'solicitante': ('Solicitante', 50, True),
+    'ciudad': ('Ciudad', 50, True),
+    'departamento': ('Departamento', 50, True),
+    'direccion': ('Dirección', 120, True),
+    'modelo': ('Modelo', 50, True),
+    'inventario': ('N° de inventario', 50, True),
+    'descripcion': ('Descripción de la falla o solicitud', 2000, True),
+    'diagnostico': ('Diagnóstico técnico', 2000, True),
+    'actividad': ('Actividad realizada', 2000, True),
+    'observaciones': ('Observaciones', 2000, False),
+    'estado_final': ('Estado final del equipo', 50, True),
+    'recibido_por': ('Recibido por', 50, True),
+}
+
+
+def _validar_reporte_general(form):
+    """Devuelve ``(datos, error)``; ``datos`` está listo para db.guardar_reporte_general.
+
+    Solo se leen los campos conocidos y cada id se comprueba contra su catálogo en la base.
+    """
+    def elegido(campo, catalogo, etiqueta):
+        """(id, nombre) del catálogo [(id, nombre)] que eligió el usuario."""
+        valor = (form.get(campo) or '').strip()
+        if not valor:
+            raise ValueError(f"Selecciona «{etiqueta}».")
+        nombres = dict(catalogo or [])
+        if not valor.isdigit() or int(valor) not in nombres:
+            raise ValueError(f"«{etiqueta}» no es válido.")
+        return int(valor), nombres[int(valor)]
+
+    def fecha(campo, etiqueta):
+        valor = _leer_fecha(form.get(campo))
+        if valor is None:
+            raise ValueError(f"«{etiqueta}» no es una fecha válida.")
+        return valor
+
+    try:
+        texto = {}
+        for campo, (etiqueta, maximo, obligatorio) in _RG_TEXTO.items():
+            valor = (form.get(campo) or '').replace('\x00', '').strip()
+            if len(valor) > maximo:
+                raise ValueError(f"«{etiqueta}» admite máximo {maximo} caracteres.")
+            if obligatorio and not valor:
+                raise ValueError(f"Completa el campo «{etiqueta}».")
+            texto[campo] = valor or None
+
+        fecha_reporte = fecha('fecha', 'Fecha')
+        fecha_entrega = fecha('fecha_entrega', 'Fecha de entrega')
+        if fecha_entrega < fecha_reporte:
+            raise ValueError("La fecha de entrega no puede ser anterior a la fecha del reporte.")
+
+        id_cliente, _ = elegido('cliente', db.clientes(), 'Cliente')
+        _, area = elegido('area', db.areas(), 'Área')
+        id_serie, serie = elegido('serie', [(e['id'], e['serie']) for e in db.inventario() or []],
+                                  'N° de serie')
+        id_tipo, tipo = elegido('tipo_equipo', db.tipo_equipos(), 'Tipo de equipo')
+        id_marca, marca = elegido('marca', db.marcas(), 'Marca')
+        id_servicio, _ = elegido('servicio', db.servicios(), 'Tipo de servicio')
+        id_tecnico, _ = elegido('entregado_por', db.personal(), 'Entregado por')
+
+        cantidades = form.getlist('repuesto_cantidad')
+        descripciones = form.getlist('repuesto_descripcion')
+        if len(cantidades) > _RG_FILAS_REPUESTOS or len(descripciones) > _RG_FILAS_REPUESTOS:
+            raise ValueError("Hay demasiadas filas de repuestos.")
+        repuestos = []
+        for n, (cantidad, descripcion) in enumerate(zip(cantidades, descripciones), start=1):
+            cantidad = cantidad.strip()
+            descripcion = descripcion.replace('\x00', '').strip()
+            if not cantidad and not descripcion:
+                continue
+            if not cantidad.isdigit() or not 1 <= int(cantidad) <= 9999:
+                raise ValueError(f"La cantidad del repuesto {n} debe ser un número entre 1 y 9999.")
+            if not descripcion or len(descripcion) > 120:
+                raise ValueError(f"Escribe la descripción del repuesto {n} (máximo 120 caracteres).")
+            repuestos.append({'cantidad': int(cantidad), 'descripcion': descripcion})
+    except ValueError as error:
+        return None, str(error)
+
+    # Lo que no tiene columna propia va en «informacion» (jsonb). Se guardan id y nombre
+    # para que el reporte siga mostrando el texto aunque el catálogo cambie después.
+    informacion = {
+        'fecha': fecha_reporte.isoformat(),
+        'departamento': texto['departamento'],
+        'direccion': texto['direccion'],
+        'equipo': {
+            'serie': serie,
+            'tipo_equipo': {'id': id_tipo, 'nombre': tipo},
+            'marca': {'id': id_marca, 'nombre': marca},
+            'modelo': texto['modelo'],
+            'inventario': texto['inventario'],
+        },
+        'descripcion': texto['descripcion'],
+        'diagnostico': texto['diagnostico'],
+        'actividad': texto['actividad'],
+        'repuestos': repuestos,
+        'observaciones': texto['observaciones'],
+        'estado_final': texto['estado_final'],
+        'recibido_por': texto['recibido_por'],
+    }
+    return {
+        'cliente': id_cliente,
+        'area': area[:50],                 # la columna es varchar(50) y guarda el nombre
+        'solicitante': texto['solicitante'],
+        'ciudad': texto['ciudad'],
+        'serie': id_serie,                 # id del equipo en inventario (llave foránea)
+        'servicio': id_servicio,
+        'informacion': informacion,
+        'fecha_entrega': fecha_entrega,
+        'entregado_por': id_tecnico,
+    }, None
+
+
+def _pagina_reporte_general(valores=None, error=None, guardado=None, codigo=200):
+    return render_template(
+        'forms/reporte_general/crear_reporte_general.html',
+        clientes=db.clientes() or [],
+        areas=db.areas() or [],
+        equipos=db.inventario() or [],
+        tipos=db.tipo_equipos() or [],
+        marcas=db.marcas() or [],
+        servicios=db.servicios() or [],
+        personal=db.personal() or [],
+        filas_repuestos=_RG_FILAS_REPUESTOS,
+        v=valores if valores is not None else MultiDict(),
+        error=error, guardado=guardado,
+    ), codigo
+
+
+@sisem.route('/mantenimiento/reporte_general')
+@login_required
+def crear_reporte_general():
+    return _pagina_reporte_general(guardado=_arg_entero('guardado', 1, 2**31 - 1))
+
+
+@sisem.route('/mantenimiento/reporte_general/guardar', methods=['POST'])
+@login_required
+def guardar_reporte_general():
+    datos, problema = _validar_reporte_general(request.form)
+    if problema:
+        return _pagina_reporte_general(request.form, error=problema, codigo=400)
+
+    try:
+        reporte_id = db.guardar_reporte_general(datos)
+    except Exception:
+        logger.exception("No se pudo guardar el reporte general")
+        return _pagina_reporte_general(request.form, codigo=500,
+                                       error="No se pudo guardar el reporte. Inténtalo de nuevo.")
+    # Post/Redirect/Get: recargar la página no vuelve a enviar el formulario
+    return redirect(url_for('crear_reporte_general', guardado=reporte_id))
+
+@sisem.route('/mantenimiento/reporte_general/consultar_reportes')
+@login_required
+def consultar_reportes_generales():
+    # La consulta ya trae los nombres (JOIN en la base): no hace falta enviar los catálogos
+    return render_template('forms/reporte_general/consultar_reportes_generales.html',
+                           reportes=db.consultar_reporte_general(),
+                           nombre_pdf=informes.nombre_archivo_reporte_general)
+
+
+@sisem.route('/mantenimiento/reporte_general/<int:reporte_id>/descargar')
+@login_required
+def descargar_reporte_general(reporte_id):
+    """PDF del reporte general (formato FT-GC-041) armado con los datos guardados en la base."""
+    try:
+        pdf, nombre = informes.generar_reporte_general_pdf(reporte_id)
+    except informes.ReporteNoEncontrado:
+        abort(404)
+    except Exception:
+        logger.exception("Error generando el PDF del reporte general %s", reporte_id)
+        return _error(500, "No se pudo generar el PDF. Inténtalo de nuevo más tarde.")
+
+    return send_file(io.BytesIO(pdf), mimetype='application/pdf', as_attachment=True,
+                     download_name=nombre)
 
 if __name__ == '__main__':
     sisem.run(debug=DEBUG, host=os.getenv('FLASK_HOST', '127.0.0.1'),

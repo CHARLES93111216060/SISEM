@@ -1,8 +1,9 @@
 # SISEM — Sistema Integrado de Seguimiento de Equipos Médicos
 
-Aplicación Flask para registrar mantenimientos de equipos biomédicos y las hojas de vida de los equipos
-(con descarga de ambos documentos en PDF), para gestionar el inventario de equipos, ya sea uno por uno
-o cargando un archivo Excel, y para planear los mantenimientos en un cronograma mensual y anual.
+Aplicación Flask para registrar mantenimientos de equipos biomédicos, reportes generales de servicio y
+las hojas de vida de los equipos (con descarga de los tres documentos en PDF), para gestionar el
+inventario de equipos, ya sea uno por uno o cargando un archivo Excel, y para planear los mantenimientos
+en un cronograma mensual y anual.
 
 ## Estructura del proyecto
 
@@ -16,7 +17,8 @@ SISEM_PROJECT/
 │                               #   · inventario manual (_validar_inventario);
 │                               #   · carga de inventario por Excel (_abrir_excel, _leer_filas_excel,
 │                               #     _fila_excel_a_formulario, procesar_excel);
-│                               #   · cronograma (_validar_programacion, actualizar_cronograma).
+│                               #   · cronograma (_validar_programacion, actualizar_cronograma);
+│                               #   · reporte general (_validar_reporte_general, _pagina_reporte_general).
 ├── requirements.txt            # Dependencias de Python con versión fija (formato paquete==versión).
 ├── Dockerfile                  # Imagen para Render: Python + librerías de sistema de WeasyPrint (Pango),
 │                               #   usuario sin privilegios y arranque con gunicorn.
@@ -31,7 +33,7 @@ SISEM_PROJECT/
 │   ├── db.py                   # Acceso a PostgreSQL con pool de conexiones (psycopg). Lee DATABASE_URL o
 │   │                           #   db_host/db_user/…
 │   │                           #   · Catálogos: clientes, personal, marcas, servicios, tipos de equipo,
-│   │                           #     riesgos.
+│   │                           #     riesgos, áreas clínicas.
 │   │                           #   · Reportes: guardar, leer, listar, contar.
 │   │                           #   · Hojas de vida: equipos sin hoja de vida, responsables, guardar
 │   │                           #     (hoja + accesorios en una transacción), leer, buscar y contar.
@@ -39,6 +41,8 @@ SISEM_PROJECT/
 │   │                           #     guardar_inventario (lanza InventarioDuplicado si la serie ya existe).
 │   │                           #   · Cronograma: equipos programables, consulta por rango de fechas y filtros,
 │   │                           #     programar (varias fechas en una transacción, sin duplicar) y actualizar.
+│   │                           #   · Reporte general: guardar (informacion como jsonb), listar con nombres
+│   │                           #     (JOIN) y leer uno para el PDF.
 │   └── postgres/               # Migración de MariaDB a PostgreSQL
 │       ├── LEEME.md            # Guía paso a paso de la migración.
 │       ├── 00_tipos_en_mariadb.sql   # Consulta los tipos reales de columnas en MariaDB.
@@ -55,6 +59,10 @@ SISEM_PROJECT/
 │                               #     formularios para la plantilla genérica.
 │                               #   · Hoja de vida: contexto_hoja_vida, generar_hoja_vida_pdf y el nombre
 │                               #     seguro del archivo (hoja_vida_<inventario>.pdf).
+│                               #   · Reporte general: FORMATO_REPORTE_GENERAL (empresa, logo, código,
+│                               #     versión y fechas del formato), contexto_reporte_general,
+│                               #     generar_reporte_general_pdf y el nombre del archivo
+│                               #     (reporte_servicio_<id>_<inventario>.pdf).
 │                               #   · _html_a_pdf: conversión HTML → PDF con WeasyPrint, que solo puede
 │                               #     leer archivos de static/ (ni internet ni otros archivos del servidor).
 │
@@ -74,7 +82,8 @@ SISEM_PROJECT/
 │   │   ├── forms_mantenimiento.html          # Página con el selector de formularios.
 │   │   ├── form_protocolo_mantenimiento.html # Formulario común: técnico, cliente, equipo, servicio,
 │   │   │                                     #   repuestos y estado final (usa los catálogos de la BD).
-│   │   ├── form_reporte_general.html         # Aviso: formulario aún no disponible.
+│   │   ├── form_reporte_general.html         # Fragmento (sin layout, se carga por AJAX en el selector):
+│   │   │                                     #   botones "Crear" y "Consultar reportes generales".
 │   │   ├── form_consulta.html                # Enlace al historial de reportes.
 │   │   ├── hojas_de_vida_equipos.html        # Página del módulo: botones "Nueva hoja de vida" y
 │   │   │                                     #   "Consultar hojas de vida".
@@ -91,6 +100,11 @@ SISEM_PROJECT/
 │   │   │   │                                 #   los catálogos); conserva lo escrito si hay un error.
 │   │   │   └── cargar_excel.html             # Carga de inventario desde un .xlsx: formato esperado, resumen
 │   │   │                                     #   del resultado y tabla con los errores por fila.
+│   │   ├── reporte_general/
+│   │   │   ├── crear_reporte_general.html    # Formulario del reporte de servicio (FT-GC-041): cliente, equipo,
+│   │   │   │                                 #   servicio, repuestos (5 filas), cierre y entrega. Conserva lo
+│   │   │   │                                 #   escrito si hay un error; al guardar muestra el enlace al PDF.
+│   │   │   └── consultar_reportes_generales.html # Tabla con nombres, buscador y botón "Descargar PDF".
 │   │   ├── cronograma/
 │   │   │   ├── cronograma.html               # Página principal: resumen, cambio de vista y periodo, filtros y leyenda.
 │   │   │   ├── _vista_mes.html               # Calendario del mes y agenda en tabla (la que queda en el celular).
@@ -130,7 +144,9 @@ SISEM_PROJECT/
 │       ├── bomba_infusion.html     # Réplica del formato Word PM-020.
 │       ├── concentrador_o2.html    # Réplica del formato Word PM-013.
 │       ├── protocolo_generico.html # Resto de equipos (se arma a partir de su formulario).
-│       └── hoja_de_vida.html       # Hoja de vida de equipo médico (formato PM_003, una página, con foto).
+│       ├── hoja_de_vida.html       # Hoja de vida de equipo médico (formato PM_003, una página, con foto).
+│       └── reporte_general.html    # Reporte de servicio (réplica de Formatos/REPORTE DE SERVICIO.pdf,
+│                                   #   FT-GC-041). El encabezado se repite en cada hoja con "PÁGINA n DE total".
 │
 ├── static/                     # Archivos públicos que sirve Flask
 │   ├── css/
@@ -141,16 +157,16 @@ SISEM_PROJECT/
 │   │   ├── buscador.js         # Filtra las filas de una tabla mientras se escribe (sin tildes ni mayúsculas).
 │   │   │                       #   Reutilizable: <input data-filtro-tabla="id_de_la_tabla">.
 │   │   ├── forms.js            # Carga de formularios por AJAX, envío del informe en JSON y descarga del PDF.
-│   │   ├── historial.js        # Botones "Descargar PDF" del historial de reportes y de la consulta de
-│   │   │                       #   hojas de vida.
+│   │   ├── historial.js        # Botones "Descargar PDF" del historial de reportes, de la consulta de
+│   │   │                       #   hojas de vida y de la consulta de reportes generales.
 │   │   └── hoja_vida.js        # Hoja de vida: autollenado desde el inventario y el personal, vista previa y
 │   │                           #   compresión de la foto, guardado y descarga automática del PDF.
 │   ├── fonts/                  # Fuente Jost (Regular, Medium, Bold) usada en los PDF.
 │   └── images/                 # Íconos SVG del menú, logos (web y PDF) y sello del PDF.
 │                               #   paperclip.svg no se usa en ninguna plantilla.
 │
-├── Formatos/                   # Formatos originales (Word por equipo y "hoja de vida equipo.xlsx"):
-│                               #   referencia de diseño, no se usan al ejecutar.
+├── Formatos/                   # Formatos originales (Word por equipo, "hoja de vida equipo.xlsx" y
+│                               #   "REPORTE DE SERVICIO.pdf"): referencia de diseño, no se usan al ejecutar.
 │
 ├── tests/
 │   ├── __init__.py
@@ -182,6 +198,10 @@ SISEM_PROJECT/
 | `/mantenimiento/planificado/guardar`               | POST (formulario) | Valida y crea las fechas; redirige al mes de la primera    |
 | `/mantenimiento/planificado/<id>`                  | GET               | Detalle de un mantenimiento programado                     |
 | `/mantenimiento/planificado/<id>/actualizar`       | POST (formulario) | Cambia estado, fecha, técnico y observaciones              |
+| `/mantenimiento/reporte_general?guardado=…`        | GET               | Formulario del reporte general (y aviso con enlace al PDF) |
+| `/mantenimiento/reporte_general/guardar`           | POST (formulario) | Valida y guarda el reporte; redirige al formulario vacío   |
+| `/mantenimiento/reporte_general/consultar_reportes` | GET              | Listado de reportes generales con buscador                 |
+| `/mantenimiento/reporte_general/<id>/descargar`    | GET               | PDF del reporte general (formato FT-GC-041)                |
 | `/mantenimiento/hojas_vida_equipos`                | GET               | Página del módulo de hojas de vida                       |
 | `/crear_hv`                                        | GET               | Formulario de nueva hoja de vida                           |
 | `/mantenimiento/hojas_vida_equipos/guardar`        | POST (multipart)  | Valida y guarda la hoja de vida y sus accesorios           |
@@ -203,7 +223,7 @@ PostgreSQL. Tablas que usa la aplicación:
 
 | Tabla / vista                                                               | Uso                                                                                                                                           |
 | --------------------------------------------------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------- |
-| `clientes`, `personal`, `marcas`, `mantenimientos`, `tipo_equipo` | Catálogos (listas desplegables y nombres en los PDF)                                                                                         |
+| `clientes`, `personal`, `marcas`, `mantenimientos`, `tipo_equipo`, `areas_clinicas` | Catálogos (listas desplegables y nombres en los PDF). De `personal` también se usan `cargo`, `telefono` y `correo` |
 | `riesgo`                                                                  | Clasificaciones del riesgo (`I`, `IIA`, `IIB`, `III`); `inventario.riesgo` guarda el texto                                          |
 | `inventario`                                                              | Equipos: tipo, marca, lote, serie, serial interno, cliente, riesgo, INVIMA. **Solo `serie` es única** (restricción `unico_serie`) |
 | `reportes`                                                                | Reportes de mantenimiento (ids en columnas + formulario completo como JSON)                                                                   |
@@ -211,12 +231,30 @@ PostgreSQL. Tablas que usa la aplicación:
 | `hojas_vida_accesorios`                                                   | Hasta 8 accesorios por hoja de vida (`id_hoja_vida`, `fila` 1-8)                                                                          |
 | `v_hojas_vida` (vista)                                                    | Une la hoja de vida con inventario, tipo, marca, cliente y responsable; la usan el PDF y la consulta                                          |
 | `cronograma_mantenimientos`                                               | Una fila por cada fecha programada: equipo, tipo de mantenimiento, frecuencia, fecha, estado, técnico y observaciones                         |
+| `reporte_general`                                                         | Reportes de servicio: `cliente`, `serie` (id de `inventario`), `servicio` (id de `mantenimientos`) y `entregado_por` (id de `personal`) con llave foránea; `area` (nombre del área), `solicitante`, `ciudad`, `fecha_entrega` y el resto del formulario en `informacion` (jsonb) |
+
+Contenido de `reporte_general.informacion`:
+
+```json
+{
+  "fecha": "2026-11-12", "departamento": "…", "direccion": "…",
+  "equipo": {"serie": "…", "tipo_equipo": {"id": 1, "nombre": "…"}, "marca": {"id": 7, "nombre": "…"},
+             "modelo": "…", "inventario": "…"},
+  "descripcion": "…", "diagnostico": "…", "actividad": "…",
+  "repuestos": [{"cantidad": 2, "descripcion": "…"}],
+  "observaciones": "…", "estado_final": "…", "recibido_por": "…"
+}
+```
+
+Tipo de equipo y marca se guardan con id **y** nombre, para que el PDF siga mostrando el texto aunque el catálogo
+cambie después.
 
 La base de Render es una **copia exacta** de la base local (estructura y datos). Cualquier cambio de estructura
 (tablas, columnas, restricciones, vistas) hay que hacerlo en las dos.
 
-`riesgo`, `hojas_vida_equipos`, `hojas_vida_accesorios`, `v_hojas_vida`, `cronograma_mantenimientos`, las columnas
-`inventario.invima` y `personal.telefono` y la restricción `unico_serie` se crearon directamente en la base y **no están en
+`riesgo`, `areas_clinicas`, `hojas_vida_equipos`, `hojas_vida_accesorios`, `v_hojas_vida`, `cronograma_mantenimientos`,
+`reporte_general`, las columnas `inventario.invima`, `personal.telefono` y `personal.cargo` y la restricción `unico_serie` se
+crearon directamente en la base y **no están en
 `database/postgres/01_esquema.sql`**. Para montar una base nueva desde cero, copia la estructura de la base
 local (por ejemplo, con *Generate SQL → DDL* de DBeaver) en vez de usar solo ese script.
 
@@ -277,6 +315,55 @@ flowchart TD
      `static/`: no accede a internet ni a otros archivos del servidor.
 6. **Historial.** `/mantenimiento/historial` lista los reportes (20 por página) desde PostgreSQL y
    permite volver a descargar el PDF de cualquiera con `historial.js`.
+
+### Reporte general (reporte de servicio)
+
+```mermaid
+flowchart TD
+    U[Navegador] -->|1. GET /mantenimiento/reportes<br/>elige 'Reporte general'| F[forms.js · /load_form/reporte_general<br/>fragmento con Crear / Consultar]
+    U -->|2. GET /mantenimiento/reporte_general| C[app.py · crear_reporte_general]
+    C -->|clientes, áreas, inventario, tipos,<br/>marcas, servicios, personal| DB[(PostgreSQL<br/>database/db.py)]
+    U -->|3. POST /reporte_general/guardar<br/>formulario + csrf_token| G[app.py · guardar_reporte_general<br/>_validar_reporte_general]
+    G -->|INSERT parametrizado<br/>resto del formulario en jsonb| DB
+    G -->|error: mismo formulario con lo escrito<br/>éxito: redirige con ?guardado=id + enlace al PDF| U
+    U -->|4. GET /reporte_general/consultar_reportes| Q[app.py · consultar_reportes_generales]
+    Q -->|SELECT reporte_general JOIN clientes,<br/>inventario, tipo_equipo, mantenimientos, personal| DB
+    Q -->|tabla + buscador + Descargar PDF| U
+    U -->|5. GET /reporte_general/&lt;id&gt;/descargar| D[app.py · descargar_reporte_general]
+    D --> I[informes.py<br/>contexto_reporte_general]
+    I -->|obtener_reporte_general<br/>nombres + cargo del técnico| DB
+    I -->|contexto| T[pdf/reporte_general.html]
+    T -->|HTML| W[WeasyPrint<br/>solo lee static/]
+    W -->|reporte_servicio_&lt;id&gt;_&lt;inventario&gt;.pdf| U
+```
+
+1. **Entrada.** En *Generar reporte de mantenimiento*, la opción **Reporte general** del selector carga por AJAX
+   `form_reporte_general.html`. Es solo un fragmento, sin `extends`, porque se inserta dentro de una página que
+   ya tiene el menú; si tuviera el layout, el menú lateral saldría duplicado. Sus botones llevan al formulario y
+   a la consulta.
+2. **Formulario.** `/mantenimiento/reporte_general` muestra las listas de cliente, área, equipo (serie del
+   inventario), tipo, marca, tipo de servicio y técnico. Los catálogos son tuplas (`[0]` id, `[1]` nombre).
+3. **Validación y guardado.** `_validar_reporte_general` lee solo los campos conocidos:
+   - controla largo y obligatorios de cada texto;
+   - comprueba que cada id elegido exista en su catálogo;
+   - acepta solo fechas reales, y la de entrega no puede ser anterior a la del reporte;
+   - en los repuestos ignora las filas vacías y exige cantidad (1-9999) y descripción en las que tengan algo.
+
+   `db.guardar_reporte_general` hace el `INSERT`: las llaves foráneas van en sus columnas y el resto en
+   `informacion` (jsonb, con `Jsonb(...)`). Si hay un error, la página se vuelve a mostrar con el mensaje y con
+   todo lo escrito. Si sale bien, redirige al formulario vacío con el aviso "Reporte general N° X guardado" y el
+   enlace **Descargar PDF**; recargar la página no lo guarda dos veces.
+4. **Consulta.** `/mantenimiento/reporte_general/consultar_reportes` lista los reportes, del más reciente al más
+   antiguo, con los nombres resueltos por `JOIN` en una sola consulta. `buscador.js` filtra la tabla y cada fila
+   tiene **Descargar PDF** (`historial.js`). Si la base falla, la consulta devuelve una lista vacía en vez de un
+   error 500.
+5. **PDF.** `descargar_reporte_general` llama a `informes.generar_reporte_general_pdf`. Esta función:
+   - lee el reporte con `db.obtener_reporte_general`, que trae los nombres de cliente, servicio y técnico, y el
+     cargo del técnico;
+   - toma el resto de `informacion`, sin fallar si a un reporte le faltan datos;
+   - rellena `templates/pdf/reporte_general.html`, y WeasyPrint genera `reporte_servicio_<id>_<inventario>.pdf`.
+
+   Un id que no existe responde 404.
 
 ### Hojas de vida de equipos
 
@@ -438,6 +525,7 @@ se convierte a PDF con WeasyPrint, en memoria y sin archivos temporales.
 | Reporte · 4 – Concentrador de O2 | `templates/pdf/concentrador_o2.html` (réplica del formato Word PM-013)                                                           |
 | Reporte · los demás (1-16)       | `templates/pdf/protocolo_generico.html`, construida leyendo el propio formulario de `templates/forms/protocolos_mantenimiento/` |
 | Hoja de vida de equipo             | `templates/pdf/hoja_de_vida.html` (formato PM_003, una página)                                                                   |
+| Reporte general (de servicio)      | `templates/pdf/reporte_general.html` (réplica de `Formatos/REPORTE DE SERVICIO.pdf`, FT-GC-041)                                  |
 
 Piezas compartidas de los reportes: `templates/pdf/base.html`, `_estilos.css`, `_encabezado.html` y los
 parciales `_cliente`, `_equipo`, `_repuestos`, `_cierre`, etc. Reportes y hoja de vida usan el mismo estilo
@@ -446,6 +534,11 @@ parciales `_cliente`, `_equipo`, `_repuestos`, `_cierre`, etc. Reportes y hoja d
 El PDF del reporte toma el tipo de equipo del propio reporte guardado, no de la URL.
 
 La **fecha de aprobación** del formato PM_003 se escribe en `FECHA_APROBACION_HV` (`informes/informes.py`).
+
+Los datos fijos del reporte general (empresa, logo, código `FT-GC-041`, versión `003`, fecha de revisión y de
+aprobación) están en `FORMATO_REPORTE_GENERAL` (`informes/informes.py`). Si cambia el formato, se editan ahí.
+Su PDF usa franjas `#4f81bd`, como el formato original. Si el texto es largo, pasa a una segunda hoja y el
+encabezado se repite con "PÁGINA 2 DE 2".
 
 ### Agregar o completar un equipo
 
@@ -503,7 +596,8 @@ quitarlo (y la parte `fromDatabase` de `DATABASE_URL`) para no conectar la app a
 arranca o la carga por Excel queda sin protección. La guía para migrar desde MariaDB (esquema, copia de datos
 con DBeaver y verificación) está en `database/postgres/LEEME.md`.
 
-La tabla `cronograma_mantenimientos` también debe existir en la base de Render. El servidor calcula "hoy" y los
+Las tablas `cronograma_mantenimientos`, `reporte_general` y `areas_clinicas` (y la columna `personal.cargo`)
+también deben existir en la base de Render. El servidor calcula "hoy" y los
 vencidos con su propia hora, que en Render suele ser UTC: después de las 7 p. m. de Colombia ya usa el día siguiente.
 
 ## Seguridad: qué se hizo
@@ -514,7 +608,7 @@ vencidos con su propia hora, que en Render suele ser UTC: después de las 7 p. m
 - Cookie de sesión `HttpOnly`, `SameSite=Lax` y `Secure` (en producción); sesión nueva al iniciar sesión; expira por inactividad.
 - Cabeceras: Content-Security-Policy estricta (sin scripts inline), `X-Frame-Options`, `nosniff`, HSTS, `Cache-Control: no-store`.
 - `SECRET_KEY` obligatoria en producción; `FLASK_DEBUG` apagado por defecto (antes estaba **encendido**).
-- Validación en el servidor de reportes, hojas de vida, inventario y cronograma (tipos, longitudes, fechas, valores permitidos, ids existentes, tamaño máximo de 1 MB por envío). Los formularios solo aceptan los campos conocidos; el resto se ignora.
+- Validación en el servidor de reportes, reportes generales, hojas de vida, inventario y cronograma (tipos, longitudes, fechas, valores permitidos, ids existentes, tamaño máximo de 1 MB por envío). Los formularios solo aceptan los campos conocidos; el resto se ignora.
 - Carga por Excel: solo `.xlsx` con firma ZIP real, límite de tamaño descomprimido y de archivos internos (contra bombas ZIP), sin macros, `defusedxml` contra ataques XML, sin ejecutar fórmulas, rechazo de textos que empiezan por `=`, `+` o `@`, máximo 1000 filas y la misma validación del formulario manual en cada fila.
 - Fotos de las hojas de vida revisadas y recodificadas con Pillow (sin metadatos ni contenido que no sea imagen).
 - Los errores ya no devuelven `str(e)` al navegador (podía filtrar datos de la base); se registran en el log.
@@ -527,7 +621,12 @@ vencidos con su propia hora, que en Render suele ser UTC: después de las 7 p. m
 
 - Completar los módulos pendientes del aplicativo.
 - Escribir la fecha de aprobación del formato PM_003 en `FECHA_APROBACION_HV`.
-- Agregar a los scripts de `database/postgres/` la estructura creada a mano (`riesgo`, `hojas_vida_equipos`, `hojas_vida_accesorios`, `v_hojas_vida`, `cronograma_mantenimientos`, `inventario.invima`, `personal.telefono`, `unico_serie`).
+- Agregar a los scripts de `database/postgres/` la estructura creada a mano (`riesgo`, `areas_clinicas`, `hojas_vida_equipos`, `hojas_vida_accesorios`, `v_hojas_vida`, `cronograma_mantenimientos`, `reporte_general`, `inventario.invima`, `personal.telefono`, `personal.cargo`, `unico_serie`).
+- Reporte general:
+  - poner el logo de la empresa del formato en `FORMATO_REPORTE_GENERAL['logo']`; hoy usa `pdf_logo.png`, de BIOMEGA, con los textos de MULTILINK INGENIERIA SAS;
+  - llenar tipo, marca y N° de inventario automáticamente al elegir la serie, como en la hoja de vida;
+  - pruebas unitarias de sus rutas;
+  - borrar el reporte 1, que tiene datos de prueba (`informacion` sin el formato del formulario).
 - Limpiar los nombres repetidos de `tipo_equipo`, `marcas`, `clientes` y `mantenimientos` (conservando en `tipo_equipo` los ids 1-16).
 - Cronograma: revisar los `ON DELETE CASCADE` de `tecnico_asignado_id` y `tipo_mantenimiento` (borrar un técnico o un tipo borra sus mantenimientos programados); limitar `estado` con un `CHECK` y agregar un índice por `fecha_programada`.
 - Cronograma: renovar las fechas al pasar los 12 meses, enlazar los reportes (guardar uno no marca el mantenimiento como realizado), avisos de próximos mantenimientos y exportar a PDF.

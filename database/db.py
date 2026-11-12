@@ -17,6 +17,7 @@ from contextlib import contextmanager
 from dotenv import load_dotenv
 from psycopg import errors, sql
 from psycopg.rows import dict_row
+from psycopg.types.json import Jsonb
 from psycopg_pool import ConnectionPool
 
 load_dotenv()
@@ -118,6 +119,8 @@ def inventario():
 def riesgo_equipos():
     return _leer_catalogo("SELECT id_riesgo, tipo_riesgo FROM riesgo ORDER BY id_riesgo;")
 
+def areas():
+    return _leer_catalogo("SELECT id, area FROM areas_clinicas ORDER BY id;")
 
 # -----------------------------------------------------------------------------------------
 # Hojas de vida de equipos (tablas hojas_vida_equipos y hojas_vida_accesorios)
@@ -388,7 +391,62 @@ def actualizar_cronograma(cronograma_id, estado, fecha_programada, id_tecnico, o
         return cursor.rowcount > 0
 
 
-# ----------------------------------------INVENTARIO-------------------------------------------------
+def consultar_reporte_general():
+    """Reportes generales (diccionarios) con los nombres de cliente, equipo, servicio y técnico.
+
+    Del más reciente al más antiguo. Si la base falla devuelve [] (no rompe la página).
+    """
+    return _leer_catalogo(
+        "SELECT rg.id, rg.informacion->>'fecha' AS fecha, rg.fecha_entrega, "
+        "       rg.informacion->'equipo'->>'inventario' AS inventario, "
+        "       c.nombre AS cliente, rg.solicitante, rg.area, rg.ciudad, "
+        "       i.serie, te.equipo AS tipo_equipo, "
+        "       m.tipo_mantenimiento AS servicio, p.nombre AS tecnico "
+        "FROM reporte_general rg "
+        "LEFT JOIN clientes c ON c.id = rg.cliente "
+        "LEFT JOIN inventario i ON i.id = rg.serie "
+        "LEFT JOIN tipo_equipo te ON te.id = i.id_equipo "
+        "LEFT JOIN mantenimientos m ON m.id = rg.servicio "
+        "LEFT JOIN personal p ON p.id = rg.entregado_por "
+        "ORDER BY rg.id DESC;",
+        como_dict=True,
+    )
+
+def obtener_reporte_general(reporte_id):
+    """Un reporte general (diccionario) con los nombres de cliente, servicio y técnico; None si no existe."""
+    with _cursor(dict_row) as cursor:
+        cursor.execute(
+            "SELECT rg.id, rg.area, rg.solicitante, rg.ciudad, rg.informacion, rg.fecha_entrega, "
+            "       c.nombre AS cliente, i.serie AS serie_inventario, "
+            "       m.tipo_mantenimiento AS servicio, p.nombre AS tecnico, p.cargo AS tecnico_cargo "
+            "FROM reporte_general rg "
+            "LEFT JOIN clientes c ON c.id = rg.cliente "
+            "LEFT JOIN inventario i ON i.id = rg.serie "
+            "LEFT JOIN mantenimientos m ON m.id = rg.servicio "
+            "LEFT JOIN personal p ON p.id = rg.entregado_por "
+            "WHERE rg.id = %s;",
+            (reporte_id,),
+        )
+        return cursor.fetchone()
+
+
+def guardar_reporte_general(datos):
+    """Guarda un nuevo reporte general y devuelve el id nuevo.
+
+    ``datos`` trae las columnas de la tabla; ``informacion`` es un dict que se guarda como jsonb.
+    """
+    with _cursor() as cursor:
+        cursor.execute(
+            "INSERT INTO reporte_general "
+            "(cliente, area, solicitante, ciudad, serie, servicio, informacion, fecha_entrega, entregado_por) "
+            "VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s) RETURNING id;",
+            (datos['cliente'], datos['area'], datos['solicitante'], datos['ciudad'],
+             datos['serie'], datos['servicio'], Jsonb(datos['informacion']),
+             datos['fecha_entrega'], datos['entregado_por']),
+        )
+        return cursor.fetchone()[0]
+
+    # ----------------------------------------INVENTARIO-------------------------------------------------
 
 class InventarioDuplicado(Exception):
     """Ya existe un equipo con un valor que debe ser único. ``campo`` dice cuál
