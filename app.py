@@ -350,6 +350,7 @@ def load_form(form_type):
         servicios=db.servicios() or [],
         clientes=db.clientes() or [],
         tipo_equipos=db.tipo_equipos() or [],
+        areas=db.areas() or [],
     )
 
 

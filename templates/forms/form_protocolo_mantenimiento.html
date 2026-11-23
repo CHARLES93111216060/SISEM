@@ -67,13 +67,9 @@
 
         <select name="cliente.area" class="form-control" >
             <option value="">-- Seleccione --</option>
-            <option value="UCI">UCI</option>
-            <option value="Urgencias">Urgencias</option>
-            <option value="Cirugía">Cirugía</option>
-            <option value="Hospitalización">Hospitalización</option>
-            <option value="Obstetricia">Obstetricia</option>
-            <option value="UCI_intermédios">UCI intermédios</option>
-            <option value="Pediatria">Pediatria</option>
+            {% for area in areas %}
+                <option value="{{ area[1] }}">{{ area[1] }}</option>
+            {% endfor %}
         </select>
     </div>
 

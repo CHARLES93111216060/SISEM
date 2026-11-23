@@ -45,6 +45,7 @@ fake.clientes = lambda: [(3, 'Otro'), (7, 'Clínica <Norte> & Cía')]      # ids
 fake.marcas = lambda: [(3, 'B. Braun')]
 fake.servicios = lambda: [(1, 'Preventivo'), (2, 'Correctivo')]
 fake.tipo_equipos = lambda: TIPOS
+fake.areas = lambda: [(1, 'UCI'), (2, 'Urgencias')]
 fake.obtener_reporte_por_id = lambda i: REPORTES.get(i)
 fake.contar_reportes = lambda desde=None: len(REPORTES)
 fake.listar_reportes = lambda limite=25, desplazamiento=0: [
