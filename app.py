@@ -1,5 +1,6 @@
 """SISEM - Sistema Integrado de Seguimiento de Equipos Médicos (Flask)."""
 import calendar
+import hashlib
 import hmac
 import io
 import json
@@ -12,7 +13,9 @@ import unicodedata
 import zipfile
 from collections import defaultdict, deque
 from datetime import date, datetime, timedelta
+from decimal import ROUND_HALF_UP, Decimal
 from functools import wraps
+from itertools import zip_longest
 
 import openpyxl
 from dotenv import load_dotenv
@@ -211,17 +214,76 @@ def _manejar_inesperado(error):
 
 
 # ----------------------------------------------------------------------------------------
-# Autenticación
+# Autenticación y roles
+#   · admin: el usuario de las variables de entorno (ADMIN_USER / ADMIN_PASSWORD_HASH).
+#   · funcionario: cada persona de la tabla personal con funcion = 'funcionario', usuario,
+#     clave y acceso_activo = true (lo habilita el admin en Talento humano → Roles y permisos).
 # ----------------------------------------------------------------------------------------
+ROL_ADMIN, ROL_FUNCIONARIO = 'admin', 'funcionario'
+ROLES = {ROL_ADMIN: 'Administrador', ROL_FUNCIONARIO: 'Funcionario'}
+
+
+def _huella(clave_hash):
+    """Resumen corto de la clave guardada: si el admin la cambia, las sesiones abiertas caen."""
+    return hashlib.sha256((clave_hash or '').encode()).hexdigest()[:16]
+
+
+def _sesion_vigente():
+    """True si la sesión tiene un rol válido. Para un funcionario se vuelve a consultar la base:
+    si el admin le quitó el acceso o le cambió la clave, la sesión deja de servir de inmediato."""
+    rol = session.get('rol')
+    if 'username' not in session or rol not in ROLES:
+        return False
+    if rol == ROL_ADMIN:
+        return True
+    try:
+        estado = db.estado_acceso(session.get('personal_id'))
+    except Exception:
+        logger.exception("No se pudo revalidar la sesión del funcionario %s", session.get('personal_id'))
+        return False
+    return bool(estado and estado.get('acceso_activo') and estado.get('funcion') == ROL_FUNCIONARIO
+                and estado.get('clave_hash')
+                and hmac.compare_digest(_huella(estado['clave_hash']), session.get('huella', '')))
+
+
 def login_required(f):
     @wraps(f)
     def decorated(*args, **kwargs):
-        if 'username' not in session:
+        if not _sesion_vigente():
+            session.clear()
             if _quiere_json():
                 return jsonify({"error": "not authenticated"}), 401
             return redirect(url_for('login'))
         return f(*args, **kwargs)
     return decorated
+
+
+def rol_requerido(*roles):
+    """Se pone DEBAJO de @login_required: responde 403 si el rol de la sesión no está en ``roles``."""
+    def decorador(f):
+        @wraps(f)
+        def decorated(*args, **kwargs):
+            if session.get('rol') not in roles:
+                logger.warning("Acceso denegado a %s para %s (%s)", request.path,
+                               session.get('username'), session.get('rol'))
+                abort(403)
+            return f(*args, **kwargs)
+        return decorated
+    return decorador
+
+
+solo_admin = rol_requerido(ROL_ADMIN)
+
+
+def es_admin():
+    return session.get('rol') == ROL_ADMIN
+
+
+@sisem.context_processor
+def _datos_de_sesion():
+    """Disponibles en todas las plantillas (menú lateral, cabecera, botones según el rol)."""
+    return {'es_admin': es_admin(), 'rol_nombre': ROLES.get(session.get('rol'), ''),
+            'nombre_usuario': session.get('nombre') or session.get('username', '')}
 
 
 @sisem.route('/healthz')
@@ -244,26 +306,50 @@ def login():
             return render_template('login.html',
                                    error='Demasiados intentos fallidos. Espera unos minutos.'), 429
 
-        usuario = request.form.get('username', '').strip()
-        clave = request.form.get('password', '')
-        usuario_ok = bool(ADMIN_USER) and hmac.compare_digest(usuario.encode(), ADMIN_USER.encode())
-        clave_ok = check_password_hash(ADMIN_HASH or _HASH_FALSO, clave)   # siempre se evalúa
+        usuario = request.form.get('username', '').strip()[:60]
+        clave = request.form.get('password', '')[:128]
+        es_usuario_admin = bool(ADMIN_USER) and hmac.compare_digest(usuario.encode(), ADMIN_USER.encode())
 
-        if usuario_ok and clave_ok and ADMIN_HASH:
-            session.clear()                 # evita fijación de sesión
-            session['username'] = usuario
-            session.permanent = True
-            _fallos.pop(ip, None)
-            logger.info("Inicio de sesión de %s", usuario)
-            return redirect(url_for('dashboard'))
+        if es_usuario_admin:
+            clave_ok = check_password_hash(ADMIN_HASH or _HASH_FALSO, clave)   # siempre se evalúa
+            if clave_ok and ADMIN_HASH:
+                _iniciar_sesion(usuario, ROL_ADMIN, nombre=usuario)
+                _fallos.pop(ip, None)
+                logger.info("Inicio de sesión del administrador %s", usuario)
+                return redirect(url_for('dashboard'))
+        else:
+            try:
+                fila = db.acceso_personal(usuario) if usuario else None
+            except Exception:
+                logger.exception("No se pudo consultar el acceso del personal")
+                return render_template('login.html',
+                                       error='No se pudo verificar el acceso. Inténtalo más tarde.'), 503
+            guardada = (fila or {}).get('clave_hash')
+            clave_ok = check_password_hash(guardada or _HASH_FALSO, clave)    # mismo tiempo exista o no
+            if (clave_ok and guardada and fila.get('acceso_activo')
+                    and fila.get('funcion') == ROL_FUNCIONARIO):
+                _iniciar_sesion(usuario, ROL_FUNCIONARIO, nombre=fila['nombre'],
+                                personal_id=fila['id'], huella=_huella(guardada))
+                db.registrar_acceso(fila['id'])
+                _fallos.pop(ip, None)
+                logger.info("Inicio de sesión del funcionario %s (id %s)", usuario, fila['id'])
+                return redirect(url_for('dashboard'))
 
         _registrar_fallo(ip)
         logger.warning("Credenciales inválidas desde %s", ip)
         return render_template('login.html', error='Credenciales inválidas'), 401
 
-    if 'username' in session:
+    if _sesion_vigente():
         return redirect(url_for('dashboard'))
     return render_template('login.html')
+
+
+def _iniciar_sesion(usuario, rol, nombre, personal_id=None, huella=None):
+    session.clear()                 # sesión nueva: evita fijación de sesión
+    session.update(username=usuario, rol=rol, nombre=nombre)
+    if personal_id is not None:
+        session.update(personal_id=personal_id, huella=huella)
+    session.permanent = True
 
 
 @sisem.route('/logout', methods=['POST'])
@@ -284,7 +370,9 @@ def dashboard():
         'reportes_mes': db.contar_reportes(hoy.replace(day=1).isoformat()),
         'clientes': len(db.clientes() or []),
     }
-    return render_template('dashboard.html', est=estadisticas)
+    # El funcionario solo ve el conteo de SUS cuentas de cobro pendientes
+    pendientes = db.resumen_pendientes(None if es_admin() else session.get('personal_id'))
+    return render_template('dashboard.html', est=estadisticas, pend=pendientes)
 
 
 @sisem.route('/clientes')
@@ -294,20 +382,9 @@ def ver_clientes():
 
 
 # Módulos del menú que aún no existen: muestran una página clara en lugar de un 404.
-PROXIMAMENTE = {
-    # ('mantenimiento', 'solicitudes'): 'Solicitudes de mantenimiento',
-    ('comercial', 'clientes'): 'Facturación',
-    ('comercial', 'ordenes'): 'Órdenes de compra',
-    ('comercial', 'inventario'): 'Inventario',
-    ('talento_humano', 'empleados'): 'Empleados',
-    ('talento_humano', 'roles'): 'Roles y permisos',
-    ('talento_humano', 'asistencia'): 'Cuentas de cobro',
-    ('talento_humano', 'nomina'): 'Nómina',
-    ('talento_humano', 'reportes'): 'Modificar lista de empleados',
-    ('laboratorio', 'cronograma_metrologia'): 'Cronograma de metrología',
-    ('laboratorio', 'reportes_metrologia'): 'Generar reportes de metrología',
-    ('laboratorio', 'hojas_de_vida'): 'Consulta de hojas de vida',
-}
+# Hoy todos los módulos del menú están implementados; para anunciar uno nuevo, agrégalo así:
+#   ('modulo', 'seccion'): 'Título visible',
+PROXIMAMENTE = {}
 
 
 @sisem.route('/<modulo>/<seccion>')
@@ -676,6 +753,7 @@ def _formulario_inventario(error=None, valores=None, guardado=None, codigo=200):
 
 @sisem.route('/comercial/ingresar_inventario')
 @login_required
+@solo_admin
 def ingresar_inventario():
     return _formulario_inventario(guardado=request.args.get('guardado', '')[:120] or None)
 
@@ -737,6 +815,7 @@ _INVENTARIO_REPETIDO = {
 
 @sisem.route('/comercial/guardar_inventario', methods=['POST'])
 @login_required
+@solo_admin
 def guardar_inventario():
     datos, problema = _validar_inventario(request.form)
     if problema:
@@ -898,12 +977,14 @@ def _pagina_excel(error=None, resultado=None, codigo=200):
 
 @sisem.route('/comercial/cargar_excel')
 @login_required
+@solo_admin
 def cargar_excel():
     return _pagina_excel()
 
 
 @sisem.route('/comercial/procesar_excel', methods=['POST'])
 @login_required
+@solo_admin
 def procesar_excel():
     """Valida y guarda cada fila por separado: una fila con error no detiene las demás."""
     archivo = request.files.get('archivo_excel')
@@ -1381,6 +1462,953 @@ def descargar_reporte_general(reporte_id):
 
     return send_file(io.BytesIO(pdf), mimetype='application/pdf', as_attachment=True,
                      download_name=nombre)
+
+
+# =========================================================================================
+# Utilidades comunes de los módulos de Comercial, Talento humano, Laboratorio y Mi cuenta
+# =========================================================================================
+_DINERO = re.compile(r'^\d{1,12}(\.\d{1,2})?$')
+_CENTAVOS = Decimal('0.01')
+_TOPE_DINERO = Decimal('999999999999.99')            # numeric(14,2)
+
+
+class _Formulario:
+    """Lee y valida campos de un formulario. Cada método lanza ValueError con un mensaje para
+    el usuario; solo se leen los campos que pide el código (cualquier otro se ignora)."""
+
+    def __init__(self, form):
+        self.form = form
+
+    def bruto(self, campo):
+        return (self.form.get(campo) or '').replace('\x00', '').strip()
+
+    def texto(self, campo, etiqueta, maximo, obligatorio=True):
+        valor = self.bruto(campo)
+        if obligatorio and not valor:
+            raise ValueError(f"Completa el campo «{etiqueta}».")
+        if len(valor) > maximo:
+            raise ValueError(f"«{etiqueta}» admite máximo {maximo} caracteres.")
+        return valor or None
+
+    def opcion(self, campo, etiqueta, opciones):
+        valor = self.bruto(campo)
+        if valor not in opciones:
+            raise ValueError(f"Selecciona un valor válido en «{etiqueta}».")
+        return valor
+
+    def id_de(self, campo, etiqueta, validos, obligatorio=True):
+        valor = self.bruto(campo)
+        if not valor:
+            if obligatorio:
+                raise ValueError(f"Selecciona «{etiqueta}».")
+            return None
+        if not valor.isdigit() or int(valor) not in validos:
+            raise ValueError(f"«{etiqueta}» no es válido.")
+        return int(valor)
+
+    def fecha(self, campo, etiqueta, obligatorio=True):
+        bruto = self.bruto(campo)
+        if not bruto and not obligatorio:
+            return None
+        valor = _leer_fecha(bruto)
+        if valor is None:
+            raise ValueError(f"«{etiqueta}» no es una fecha válida.")
+        return valor
+
+    def dinero(self, campo, etiqueta, obligatorio=True, minimo=Decimal('0')):
+        bruto = self.bruto(campo).replace(',', '.')
+        if not bruto:
+            if obligatorio:
+                raise ValueError(f"Completa el campo «{etiqueta}».")
+            return Decimal('0')
+        if not _DINERO.match(bruto) or not minimo <= Decimal(bruto) <= _TOPE_DINERO:
+            raise ValueError(f"«{etiqueta}» debe ser un valor válido (sin puntos de miles, máximo 2 decimales).")
+        return Decimal(bruto)
+
+    def entero(self, campo, etiqueta, minimo, maximo):
+        bruto = self.bruto(campo)
+        if not bruto.isdigit() or not minimo <= int(bruto) <= maximo:
+            raise ValueError(f"«{etiqueta}» debe ser un número entre {minimo} y {maximo}.")
+        return int(bruto)
+
+
+sisem.jinja_env.filters['pesos'] = lambda valor: informes.pesos(valor) or '—'
+sisem.jinja_env.filters['fecha'] = informes.fecha_legible
+sisem.jinja_env.globals['numero_documento'] = informes.numero_documento
+
+
+def _enviar_pdf(generar, registro, descripcion):
+    """Genera el PDF con ``generar(registro)`` -> (bytes, nombre) y lo envía como descarga."""
+    try:
+        pdf, nombre = generar(registro)
+    except Exception:
+        logger.exception("Error generando el PDF de %s", descripcion)
+        return _error(500, "No se pudo generar el PDF. Inténtalo de nuevo más tarde.")
+    return send_file(io.BytesIO(pdf), mimetype='application/pdf', as_attachment=True,
+                     download_name=nombre)
+
+
+def _ids(catalogo):
+    return {fila[0] for fila in catalogo or []}
+
+
+def _estado_visible(estados, estado, fecha=None):
+    """(texto, clase CSS) del estado; un pendiente con fecha pasada se muestra 'Vencido'."""
+    if estado == 'pendiente' and fecha and fecha < date.today():
+        return 'Vencido', 'vencido'
+    return estados.get(estado, (estado or '—', 'cancelado'))
+
+
+sisem.jinja_env.globals['estado_visible'] = _estado_visible
+
+
+# Rutas antiguas del menú que ahora tienen su propia página
+_RUTAS_MOVIDAS = {
+    ('comercial', 'clientes'): 'facturacion',
+    ('talento_humano', 'asistencia'): 'cuentas_cobro',
+    ('talento_humano', 'reportes'): 'nuevo_empleado',
+    ('laboratorio', 'hojas_de_vida'): 'consultar_hv',
+}
+
+
+@sisem.route('/laboratorio/hojas_de_vida')
+@sisem.route('/talento_humano/reportes')
+@sisem.route('/talento_humano/asistencia')
+@sisem.route('/comercial/clientes')
+@login_required
+def ruta_movida():
+    partes = tuple(request.path.strip('/').split('/'))
+    return redirect(url_for(_RUTAS_MOVIDAS[partes]))
+
+
+# =========================================================================================
+# Comercial: facturación (a clientes) y órdenes de compra (a proveedores) · solo admin
+# Ambas son "documentos con ítems": misma validación de ítems, totales y plantillas.
+# =========================================================================================
+ESTADOS_FACTURA = {'pendiente': ('Pendiente', 'pendiente'), 'pagada': ('Pagada', 'realizado'),
+                   'anulada': ('Anulada', 'cancelado')}
+ESTADOS_ORDEN = {'pendiente': ('Pendiente', 'pendiente'), 'aprobada': ('Aprobada', 'en_proceso'),
+                 'recibida': ('Recibida', 'realizado'), 'anulada': ('Anulada', 'cancelado')}
+_FILAS_ITEMS = 10
+_IVA_PERMITIDO = ('0', '5', '19')                     # tarifas de IVA vigentes en Colombia
+_TOPE_CANTIDAD = Decimal('1000000')
+
+# Configuración de cada tipo de documento (textos y endpoints de sus rutas)
+_DOC = {
+    'factura': {'tipo': 'factura', 'titulo': 'Factura', 'plural': 'Facturación', 'prefijo': 'FAC',
+                'estados': ESTADOS_FACTURA, 'listado': 'facturacion', 'nuevo': 'nueva_factura',
+                'guardar': 'guardar_factura', 'detalle': 'detalle_factura', 'estado': 'estado_factura',
+                'pdf': 'descargar_factura', 'id': 'factura_id'},
+    'orden': {'tipo': 'orden', 'titulo': 'Orden de compra', 'plural': 'Órdenes de compra', 'prefijo': 'OC',
+              'estados': ESTADOS_ORDEN, 'listado': 'ordenes', 'nuevo': 'nueva_orden',
+              'guardar': 'guardar_orden', 'detalle': 'detalle_orden', 'estado': 'estado_orden',
+              'pdf': 'descargar_orden', 'id': 'orden_id'},
+}
+
+
+def _leer_items(form):
+    """Ítems del formulario (filas vacías se ignoran). Lanza ValueError."""
+    columnas = [form.getlist(c) for c in ('item_descripcion', 'item_cantidad', 'item_valor', 'item_iva')]
+    if any(len(c) > _FILAS_ITEMS for c in columnas):
+        raise ValueError("Hay demasiadas filas de ítems.")
+    items = []
+    for n, fila in enumerate(zip_longest(*columnas, fillvalue=''), start=1):
+        descripcion, cantidad, valor, iva = (x.replace('\x00', '').strip() for x in fila)
+        if not (descripcion or cantidad or valor):
+            continue
+        cantidad, valor = cantidad.replace(',', '.'), valor.replace(',', '.')
+        if not descripcion or len(descripcion) > 255:
+            raise ValueError(f"Escribe la descripción del ítem {n} (máximo 255 caracteres).")
+        if not _DINERO.match(cantidad) or not Decimal('0') < Decimal(cantidad) <= _TOPE_CANTIDAD:
+            raise ValueError(f"La cantidad del ítem {n} debe ser mayor que 0 (máximo {_TOPE_CANTIDAD:,}).")
+        if not _DINERO.match(valor) or Decimal(valor) > _TOPE_DINERO:
+            raise ValueError(f"El valor unitario del ítem {n} no es válido (sin puntos de miles).")
+        if (iva or '0') not in _IVA_PERMITIDO:
+            raise ValueError(f"El IVA del ítem {n} no es válido.")
+        items.append({'fila': len(items) + 1, 'descripcion': descripcion, 'cantidad': Decimal(cantidad),
+                      'valor_unitario': Decimal(valor), 'iva_pct': Decimal(iva or '0')})
+    if not items:
+        raise ValueError("Agrega al menos un ítem con descripción, cantidad y valor.")
+    return items
+
+
+def _totales(items):
+    """(subtotal, iva, total) redondeados a centavos. El servidor siempre los recalcula."""
+    subtotal = sum((i['cantidad'] * i['valor_unitario'] for i in items), Decimal('0'))
+    iva = sum((i['cantidad'] * i['valor_unitario'] * i['iva_pct'] / 100 for i in items), Decimal('0'))
+    subtotal, iva = (x.quantize(_CENTAVOS, ROUND_HALF_UP) for x in (subtotal, iva))
+    if subtotal + iva > _TOPE_DINERO:
+        raise ValueError("El total del documento es demasiado grande.")
+    return subtotal, iva, subtotal + iva
+
+
+def _validar_documento(tipo, form):
+    """(datos, items, error) para db.guardar_documento."""
+    f = _Formulario(form)
+    try:
+        if tipo == 'factura':
+            emision = f.fecha('fecha_emision', 'Fecha de emisión')
+            vence = f.fecha('fecha_vencimiento', 'Fecha de vencimiento')
+            if vence < emision:
+                raise ValueError("La fecha de vencimiento no puede ser anterior a la de emisión.")
+            datos = {'id_cliente': f.id_de('cliente', 'Cliente', _ids(db.clientes())),
+                     'fecha_emision': emision, 'fecha_vencimiento': vence}
+        else:
+            fecha = f.fecha('fecha', 'Fecha de la orden')
+            entrega = f.fecha('fecha_entrega', 'Fecha de entrega', obligatorio=False)
+            if entrega and entrega < fecha:
+                raise ValueError("La fecha de entrega no puede ser anterior a la fecha de la orden.")
+            datos = {'proveedor': f.texto('proveedor', 'Proveedor', 150),
+                     'nit_proveedor': f.texto('nit_proveedor', 'NIT del proveedor', 30, obligatorio=False),
+                     'contacto': f.texto('contacto', 'Contacto', 150, obligatorio=False),
+                     'fecha': fecha, 'fecha_entrega': entrega}
+        items = _leer_items(form)
+        subtotal, iva, total = _totales(items)
+        datos.update(observaciones=f.texto('observaciones', 'Observaciones', 2000, obligatorio=False),
+                     subtotal=subtotal, iva=iva, total=total, creado_por=session.get('username'))
+    except ValueError as error:
+        return None, None, str(error)
+    return datos, items, None
+
+
+def _pagina_documento(tipo, valores=None, error=None, codigo=200):
+    return render_template('forms/comercial/documento_form.html', doc=_DOC[tipo],
+                           clientes=db.clientes() or [], filas=_FILAS_ITEMS, ivas=_IVA_PERMITIDO,
+                           v=valores if valores is not None else MultiDict(), error=error,
+                           hoy=date.today().isoformat()), codigo
+
+
+def _guardar_documento(tipo):
+    datos, items, problema = _validar_documento(tipo, request.form)
+    if problema:
+        return _pagina_documento(tipo, request.form, problema, 400)
+    try:
+        nuevo_id = db.guardar_documento(tipo, datos, items)
+    except Exception:
+        logger.exception("No se pudo guardar el documento %s", tipo)
+        return _pagina_documento(tipo, request.form, "No se pudo guardar. Inténtalo de nuevo.", 500)
+    return redirect(url_for(_DOC[tipo]['detalle'], **{_DOC[tipo]['id']: nuevo_id}, aviso='creado'))
+
+
+def _detalle_documento(tipo, documento):
+    if not documento:
+        abort(404)
+    return render_template('forms/comercial/documento_detalle.html', doc=_DOC[tipo], d=documento,
+                           numero=informes.numero_documento(_DOC[tipo]['prefijo'], documento['id']),
+                           aviso=request.args.get('aviso'))
+
+
+def _cambiar_estado_documento(tipo, documento_id):
+    estado = request.form.get('estado', '')
+    if estado not in _DOC[tipo]['estados']:
+        return _error(400, "Estado no válido.")
+    if not db.actualizar_estado_documento(tipo, documento_id, estado):
+        abort(404)
+    return redirect(url_for(_DOC[tipo]['detalle'], **{_DOC[tipo]['id']: documento_id}, aviso='estado'))
+
+
+@sisem.route('/comercial/facturacion')
+@login_required
+@solo_admin
+def facturacion():
+    return render_template('forms/comercial/facturacion.html', facturas=db.listar_facturas(),
+                           estados=ESTADOS_FACTURA)
+
+
+@sisem.route('/comercial/facturacion/nueva')
+@login_required
+@solo_admin
+def nueva_factura():
+    return _pagina_documento('factura')
+
+
+@sisem.route('/comercial/facturacion/guardar', methods=['POST'])
+@login_required
+@solo_admin
+def guardar_factura():
+    return _guardar_documento('factura')
+
+
+@sisem.route('/comercial/facturacion/<int:factura_id>')
+@login_required
+@solo_admin
+def detalle_factura(factura_id):
+    return _detalle_documento('factura', db.obtener_factura(factura_id))
+
+
+@sisem.route('/comercial/facturacion/<int:factura_id>/estado', methods=['POST'])
+@login_required
+@solo_admin
+def estado_factura(factura_id):
+    return _cambiar_estado_documento('factura', factura_id)
+
+
+@sisem.route('/comercial/facturacion/<int:factura_id>/descargar')
+@login_required
+@solo_admin
+def descargar_factura(factura_id):
+    factura = db.obtener_factura(factura_id) or abort(404)
+    return _enviar_pdf(informes.generar_factura_pdf, factura, f"la factura {factura_id}")
+
+
+@sisem.route('/comercial/ordenes')
+@login_required
+@solo_admin
+def ordenes():
+    return render_template('forms/comercial/ordenes.html', ordenes=db.listar_ordenes(),
+                           estados=ESTADOS_ORDEN)
+
+
+@sisem.route('/comercial/ordenes/nueva')
+@login_required
+@solo_admin
+def nueva_orden():
+    return _pagina_documento('orden')
+
+
+@sisem.route('/comercial/ordenes/guardar', methods=['POST'])
+@login_required
+@solo_admin
+def guardar_orden():
+    return _guardar_documento('orden')
+
+
+@sisem.route('/comercial/ordenes/<int:orden_id>')
+@login_required
+@solo_admin
+def detalle_orden(orden_id):
+    return _detalle_documento('orden', db.obtener_orden(orden_id))
+
+
+@sisem.route('/comercial/ordenes/<int:orden_id>/estado', methods=['POST'])
+@login_required
+@solo_admin
+def estado_orden(orden_id):
+    return _cambiar_estado_documento('orden', orden_id)
+
+
+@sisem.route('/comercial/ordenes/<int:orden_id>/descargar')
+@login_required
+@solo_admin
+def descargar_orden(orden_id):
+    orden = db.obtener_orden(orden_id) or abort(404)
+    return _enviar_pdf(informes.generar_orden_pdf, orden, f"la orden de compra {orden_id}")
+
+
+# =========================================================================================
+# Talento humano: empleados y roles/permisos (solo admin)
+# =========================================================================================
+_DOCUMENTO_ID = re.compile(r'^[0-9A-Za-z.\-]{4,20}$')
+_CORREO = re.compile(r'^[^@\s]{1,64}@[^@\s]+\.[^@\s]{2,}$')
+_TELEFONO = re.compile(r'^[0-9+()\s\-]{7,20}$')
+_USUARIO = re.compile(r'^[A-Za-z0-9._\-]{3,60}$')
+_CLAVE_MIN, _CLAVE_MAX = 10, 128
+
+# Lo que puede hacer cada rol. Se muestra en Roles y permisos; quien lo hace cumplir son los
+# decoradores @solo_admin y los filtros por personal_id de cada ruta.
+PERMISOS = [
+    ('Inicio, clientes y mi cuenta', 'Ver', 'Ver y cambiar su contraseña'),
+    ('Mantenimiento: reportes, historial, reporte general, hojas de vida y cronograma', 'Todo', 'Todo'),
+    ('Comercial · Inventario', 'Ver, ingresar equipos y cargar Excel', 'Solo ver'),
+    ('Comercial · Facturación y órdenes de compra', 'Todo', 'Sin acceso'),
+    ('Talento humano · Empleados, roles y permisos', 'Todo', 'Sin acceso'),
+    ('Talento humano · Cuentas de cobro', 'Ver todas, radicar y cambiar estado', 'Radicar y ver las propias'),
+    ('Talento humano · Nómina', 'Liquidar y ver todas', 'Ver y descargar sus desprendibles'),
+    ('Laboratorio · Metrología y hojas de vida', 'Todo', 'Todo'),
+]
+
+
+def _validar_clave(nueva, confirmar, usuario):
+    """Mensaje de error o None. Reglas: 10-128 caracteres, igual a la confirmación, distinta del usuario."""
+    if not _CLAVE_MIN <= len(nueva) <= _CLAVE_MAX:
+        return f"La contraseña debe tener entre {_CLAVE_MIN} y {_CLAVE_MAX} caracteres."
+    if nueva != confirmar:
+        return "La contraseña y su confirmación no coinciden."
+    if usuario and nueva.lower() == usuario.lower():
+        return "La contraseña no puede ser igual al usuario."
+    return None
+
+
+def _validar_empleado(form):
+    f = _Formulario(form)
+    try:
+        datos = {
+            'nombre': f.texto('nombre', 'Nombre completo', 120),
+            'documento': f.texto('documento', 'Documento', 20),
+            'cargo': f.texto('cargo', 'Cargo', 80),
+            'profesion': f.texto('profesion', 'Profesión', 80),
+            'correo': f.texto('correo', 'Correo', 120, obligatorio=False) or '',
+            'telefono': f.texto('telefono', 'Teléfono', 20, obligatorio=False),
+        }
+        if not _DOCUMENTO_ID.match(datos['documento']):
+            raise ValueError("El documento solo admite números, letras, puntos y guiones (4 a 20).")
+        if datos['correo'] and not _CORREO.match(datos['correo']):
+            raise ValueError("El correo no es válido.")
+        if datos['telefono'] and not _TELEFONO.match(datos['telefono']):
+            raise ValueError("El teléfono no es válido.")
+    except ValueError as error:
+        return None, str(error)
+    return datos, None
+
+
+def _pagina_empleado(valores=None, empleado_id=None, error=None, codigo=200):
+    return render_template('forms/talento_humano/empleado_form.html', v=valores or {},
+                           empleado_id=empleado_id, error=error), codigo
+
+
+@sisem.route('/talento_humano/empleados')
+@login_required
+@solo_admin
+def empleados():
+    return render_template('forms/talento_humano/empleados.html', empleados=db.empleados(),
+                           guardado=request.args.get('guardado'))
+
+
+@sisem.route('/talento_humano/empleados/nuevo')
+@login_required
+@solo_admin
+def nuevo_empleado():
+    return _pagina_empleado()
+
+
+@sisem.route('/talento_humano/empleados/<int:empleado_id>/editar')
+@login_required
+@solo_admin
+def editar_empleado(empleado_id):
+    empleado = db.obtener_empleado(empleado_id) or abort(404)
+    return _pagina_empleado(empleado, empleado_id)
+
+
+@sisem.route('/talento_humano/empleados/guardar', methods=['POST'])
+@login_required
+@solo_admin
+def guardar_empleado():
+    bruto_id = (request.form.get('id') or '').strip()
+    empleado_id = int(bruto_id) if bruto_id.isdigit() else None
+    datos, problema = _validar_empleado(request.form)
+    if problema:
+        return _pagina_empleado(request.form, empleado_id, problema, 400)
+    try:
+        guardado = db.guardar_empleado(datos, empleado_id)
+    except Exception:
+        logger.exception("No se pudo guardar el empleado %s", empleado_id)
+        return _pagina_empleado(request.form, empleado_id, "No se pudo guardar. Inténtalo de nuevo.", 500)
+    if guardado is None:
+        abort(404)
+    return redirect(url_for('empleados', guardado=datos['nombre']))
+
+
+@sisem.route('/talento_humano/roles')
+@login_required
+@solo_admin
+def roles():
+    return render_template('forms/talento_humano/roles.html', empleados=db.empleados(),
+                           permisos=PERMISOS, roles=ROLES, admin_usuario=ADMIN_USER,
+                           guardado=request.args.get('guardado'))
+
+
+def _pagina_acceso(empleado, error=None, codigo=200, valores=None):
+    return render_template('forms/talento_humano/acceso.html', e=empleado, error=error,
+                           v=valores or {}, clave_min=_CLAVE_MIN), codigo
+
+
+@sisem.route('/talento_humano/roles/<int:empleado_id>')
+@login_required
+@solo_admin
+def configurar_acceso(empleado_id):
+    return _pagina_acceso(db.obtener_empleado(empleado_id) or abort(404))
+
+
+@sisem.route('/talento_humano/roles/<int:empleado_id>/guardar', methods=['POST'])
+@login_required
+@solo_admin
+def guardar_acceso(empleado_id):
+    empleado = db.obtener_empleado(empleado_id) or abort(404)
+    usuario = (request.form.get('usuario') or '').strip()
+    nueva = request.form.get('clave', '')
+    activo = request.form.get('acceso_activo') == 'si'
+
+    problema = None
+    if not _USUARIO.match(usuario):
+        problema = "El usuario debe tener de 3 a 60 caracteres: letras, números, punto, guion o guion bajo."
+    elif ADMIN_USER and usuario.lower() == ADMIN_USER.lower():
+        problema = "Ese usuario está reservado para el administrador."
+    elif nueva:
+        problema = _validar_clave(nueva, request.form.get('confirmar', ''), usuario)
+    elif activo and not empleado.get('tiene_clave'):
+        problema = "Asigna una contraseña para poder activar el acceso."
+    if problema:
+        return _pagina_acceso(empleado, problema, 400, {'usuario': usuario})
+
+    try:
+        cambiado = db.configurar_acceso(empleado_id, usuario,
+                                        generate_password_hash(nueva) if nueva else None, activo)
+    except db.UsuarioDuplicado:
+        return _pagina_acceso(empleado, "Ese usuario ya lo tiene otra persona.", 409, {'usuario': usuario})
+    except Exception:
+        logger.exception("No se pudo configurar el acceso del empleado %s", empleado_id)
+        return _pagina_acceso(empleado, "No se pudo guardar. Inténtalo de nuevo.", 500, {'usuario': usuario})
+    if not cambiado:
+        abort(404)
+    logger.info("Acceso del empleado %s actualizado por %s (activo=%s, clave nueva=%s)",
+                empleado_id, session.get('username'), activo, bool(nueva))
+    return redirect(url_for('roles', guardado=empleado['nombre']))
+
+
+# =========================================================================================
+# Talento humano: cuentas de cobro (el funcionario radica y ve las suyas; el admin gestiona)
+# =========================================================================================
+ESTADOS_CUENTA = {'pendiente': ('Pendiente', 'pendiente'), 'aprobada': ('Aprobada', 'en_proceso'),
+                  'pagada': ('Pagada', 'realizado'), 'rechazada': ('Rechazada', 'vencido')}
+
+
+def _registro_propio(registro):
+    """El registro si es visible para la sesión (admin: todos; funcionario: solo los suyos).
+    Un registro ajeno responde 404 (no se revela que existe)."""
+    if not registro or (not es_admin() and registro.get('id_personal') != session.get('personal_id')):
+        abort(404)
+    return registro
+
+
+def _pagina_cuenta(valores=None, error=None, codigo=200):
+    return render_template('forms/talento_humano/cuenta_cobro_form.html',
+                           empleados=(db.personal() or []) if es_admin() else [],
+                           v=valores if valores is not None else MultiDict(), error=error,
+                           hoy=date.today().isoformat()), codigo
+
+
+@sisem.route('/talento_humano/cuentas_cobro')
+@login_required
+def cuentas_cobro():
+    filas = db.listar_cuentas_cobro(None if es_admin() else session.get('personal_id'))
+    return render_template('forms/talento_humano/cuentas_cobro.html', cuentas=filas, estados=ESTADOS_CUENTA)
+
+
+@sisem.route('/talento_humano/cuentas_cobro/nueva')
+@login_required
+def nueva_cuenta_cobro():
+    return _pagina_cuenta()
+
+
+@sisem.route('/talento_humano/cuentas_cobro/guardar', methods=['POST'])
+@login_required
+def guardar_cuenta_cobro():
+    f = _Formulario(request.form)
+    try:
+        # El funcionario solo radica a su nombre: el campo "empleado" del formulario se ignora.
+        id_personal = (f.id_de('empleado', 'Empleado', _ids(db.personal())) if es_admin()
+                       else session.get('personal_id'))
+        inicio = f.fecha('periodo_inicio', 'Inicio del periodo')
+        fin = f.fecha('periodo_fin', 'Fin del periodo')
+        if fin < inicio:
+            raise ValueError("El fin del periodo no puede ser anterior al inicio.")
+        datos = {'id_personal': id_personal, 'fecha': f.fecha('fecha', 'Fecha'),
+                 'periodo_inicio': inicio, 'periodo_fin': fin,
+                 'concepto': f.texto('concepto', 'Concepto', 500),
+                 'valor': f.dinero('valor', 'Valor', minimo=Decimal('0.01')),
+                 'observaciones': f.texto('observaciones', 'Observaciones', 1000, obligatorio=False),
+                 'creado_por': session.get('username')}
+    except ValueError as error:
+        return _pagina_cuenta(request.form, str(error), 400)
+    try:
+        nuevo_id = db.guardar_cuenta_cobro(datos)
+    except Exception:
+        logger.exception("No se pudo guardar la cuenta de cobro")
+        return _pagina_cuenta(request.form, "No se pudo guardar. Inténtalo de nuevo.", 500)
+    return redirect(url_for('detalle_cuenta_cobro', cuenta_id=nuevo_id, aviso='creado'))
+
+
+@sisem.route('/talento_humano/cuentas_cobro/<int:cuenta_id>')
+@login_required
+def detalle_cuenta_cobro(cuenta_id):
+    cuenta = _registro_propio(db.obtener_cuenta_cobro(cuenta_id))
+    return render_template('forms/talento_humano/cuenta_cobro_detalle.html', c=cuenta,
+                           estados=ESTADOS_CUENTA, aviso=request.args.get('aviso'))
+
+
+@sisem.route('/talento_humano/cuentas_cobro/<int:cuenta_id>/estado', methods=['POST'])
+@login_required
+@solo_admin
+def estado_cuenta_cobro(cuenta_id):
+    f = _Formulario(request.form)
+    try:
+        estado = f.opcion('estado', 'Estado', ESTADOS_CUENTA)
+        observaciones = f.texto('observaciones', 'Observaciones', 1000, obligatorio=False)
+    except ValueError as error:
+        return _error(400, str(error))
+    if not db.actualizar_estado_cuenta(cuenta_id, estado, observaciones):
+        abort(404)
+    return redirect(url_for('detalle_cuenta_cobro', cuenta_id=cuenta_id, aviso='estado'))
+
+
+@sisem.route('/talento_humano/cuentas_cobro/<int:cuenta_id>/descargar')
+@login_required
+def descargar_cuenta_cobro(cuenta_id):
+    cuenta = _registro_propio(db.obtener_cuenta_cobro(cuenta_id))
+    return _enviar_pdf(informes.generar_cuenta_cobro_pdf, cuenta, f"la cuenta de cobro {cuenta_id}")
+
+
+# =========================================================================================
+# Talento humano: nómina (el admin liquida; el funcionario ve sus desprendibles)
+# Cálculo simplificado: salud 4 % y pensión 4 % sobre (salario proporcional + horas extra).
+# =========================================================================================
+APORTE_SALUD = Decimal('0.04')
+APORTE_PENSION = Decimal('0.04')
+_PESO = Decimal('1')
+_PERIODO = re.compile(r'^(\d{4})-(\d{2})$')
+
+
+def _leer_periodo(texto):
+    """'2026-11' -> date(2026, 11, 1); None si no es válido."""
+    coincide = _PERIODO.match((texto or '').strip())
+    if not coincide:
+        return None
+    anio, mes = int(coincide.group(1)), int(coincide.group(2))
+    return date(anio, mes, 1) if 2000 <= anio <= 2100 and 1 <= mes <= 12 else None
+
+
+def liquidar_nomina(salario, dias, auxilio, extras, bonificaciones, otras):
+    """Totales de la liquidación, redondeados al peso. Función pura (probada en los tests)."""
+    def peso(x):
+        return x.quantize(_PESO, ROUND_HALF_UP)
+    salario_periodo = peso(salario * dias / 30)
+    auxilio_periodo = peso(auxilio * dias / 30)
+    base_aportes = salario_periodo + extras
+    salud, pension = peso(base_aportes * APORTE_SALUD), peso(base_aportes * APORTE_PENSION)
+    devengado = salario_periodo + auxilio_periodo + extras + bonificaciones
+    deducciones = salud + pension + otras
+    return {'salario_periodo': salario_periodo, 'auxilio_periodo': auxilio_periodo, 'salud': salud,
+            'pension': pension, 'total_devengado': devengado, 'total_deducciones': deducciones,
+            'neto_pagar': devengado - deducciones}
+
+
+def _pagina_nomina(valores=None, error=None, codigo=200):
+    return render_template('forms/talento_humano/nomina_form.html', empleados=db.personal() or [],
+                           v=valores if valores is not None else MultiDict(), error=error,
+                           mes_actual=date.today().strftime('%Y-%m'),
+                           salud=int(APORTE_SALUD * 100), pension=int(APORTE_PENSION * 100)), codigo
+
+
+@sisem.route('/talento_humano/nomina')
+@login_required
+def nomina():
+    filas = db.listar_nomina(None if es_admin() else session.get('personal_id'))
+    return render_template('forms/talento_humano/nomina.html', nominas=filas)
+
+
+@sisem.route('/talento_humano/nomina/nueva')
+@login_required
+@solo_admin
+def nueva_nomina():
+    return _pagina_nomina()
+
+
+@sisem.route('/talento_humano/nomina/guardar', methods=['POST'])
+@login_required
+@solo_admin
+def guardar_nomina():
+    f = _Formulario(request.form)
+    try:
+        periodo = _leer_periodo(request.form.get('periodo'))
+        if periodo is None:
+            raise ValueError("«Periodo» no es válido (mes y año).")
+        datos = {'id_personal': f.id_de('empleado', 'Empleado', _ids(db.personal())), 'periodo': periodo,
+                 'salario_base': f.dinero('salario_base', 'Salario base'),
+                 'dias_trabajados': f.entero('dias_trabajados', 'Días trabajados', 0, 30),
+                 'auxilio_transporte': f.dinero('auxilio_transporte', 'Auxilio de transporte', obligatorio=False),
+                 'horas_extra': f.dinero('horas_extra', 'Horas extra y recargos', obligatorio=False),
+                 'bonificaciones': f.dinero('bonificaciones', 'Bonificaciones', obligatorio=False),
+                 'otras_deducciones': f.dinero('otras_deducciones', 'Otras deducciones', obligatorio=False),
+                 'observaciones': f.texto('observaciones', 'Observaciones', 1000, obligatorio=False),
+                 'creado_por': session.get('username')}
+        calculo = liquidar_nomina(datos['salario_base'], datos['dias_trabajados'], datos['auxilio_transporte'],
+                                  datos['horas_extra'], datos['bonificaciones'], datos['otras_deducciones'])
+        if calculo['neto_pagar'] < 0:
+            raise ValueError("Las deducciones superan lo devengado: revisa los valores.")
+        datos.update({k: calculo[k] for k in ('salud', 'pension', 'total_devengado',
+                                              'total_deducciones', 'neto_pagar')})
+    except ValueError as error:
+        return _pagina_nomina(request.form, str(error), 400)
+    try:
+        nuevo_id = db.guardar_nomina(datos)
+    except db.NominaDuplicada:
+        return _pagina_nomina(request.form, "Ese empleado ya tiene liquidada la nómina de ese mes.", 409)
+    except Exception:
+        logger.exception("No se pudo guardar la nómina")
+        return _pagina_nomina(request.form, "No se pudo guardar. Inténtalo de nuevo.", 500)
+    return redirect(url_for('detalle_nomina', nomina_id=nuevo_id, aviso='creado'))
+
+
+@sisem.route('/talento_humano/nomina/<int:nomina_id>')
+@login_required
+def detalle_nomina(nomina_id):
+    registro = _registro_propio(db.obtener_nomina(nomina_id))
+    return render_template('forms/talento_humano/nomina_detalle.html', n=registro,
+                           aviso=request.args.get('aviso'))
+
+
+@sisem.route('/talento_humano/nomina/<int:nomina_id>/descargar')
+@login_required
+def descargar_nomina(nomina_id):
+    registro = _registro_propio(db.obtener_nomina(nomina_id))
+    return _enviar_pdf(informes.generar_nomina_pdf, registro, f"la nómina {nomina_id}")
+
+
+# =========================================================================================
+# Laboratorio: cronograma y reportes de metrología (admin y funcionario)
+# =========================================================================================
+TIPOS_METROLOGIA = informes.TIPOS_METROLOGIA
+ESTADOS_METROLOGIA = {'pendiente': ('Pendiente', 'pendiente'), 'en_proceso': ('En proceso', 'en_proceso'),
+                      'realizado': ('Realizado', 'realizado'), 'cancelado': ('Cancelado', 'cancelado')}
+_FILAS_MEDICION = 10
+_MEDIDA = re.compile(r'^-?\d{1,9}(\.\d{1,6})?$')
+
+
+def _validar_programacion_metrologia(form, actualizar=False):
+    f = _Formulario(form)
+    try:
+        datos = {
+            'fecha_programada': f.fecha('fecha_programada', 'Fecha programada'),
+            'proveedor': f.texto('proveedor', 'Laboratorio / proveedor', 150, obligatorio=False),
+            'id_responsable': f.id_de('responsable', 'Responsable', _ids(db.personal()), obligatorio=False),
+            'observaciones': f.texto('observaciones', 'Observaciones', 1000, obligatorio=False),
+        }
+        if actualizar:
+            datos['estado'] = f.opcion('estado', 'Estado', ESTADOS_METROLOGIA)
+        else:
+            datos['id_equipo'] = f.id_de('equipo', 'Equipo', {e['id'] for e in db.equipos_cronograma() or []})
+            datos['tipo'] = f.opcion('tipo', 'Tipo de actividad', TIPOS_METROLOGIA)
+    except ValueError as error:
+        return None, str(error)
+    return datos, None
+
+
+def _pagina_programar_metrologia(valores=None, error=None, codigo=200):
+    return render_template('forms/laboratorio/metrologia_form.html', equipos=db.equipos_cronograma() or [],
+                           personal=db.personal() or [], tipos=TIPOS_METROLOGIA,
+                           v=valores if valores is not None else MultiDict(request.args), error=error), codigo
+
+
+@sisem.route('/laboratorio/cronograma_metrologia')
+@login_required
+def cronograma_metrologia():
+    hoy = date.today()
+    anio = _arg_entero('anio', 2000, 2100) or hoy.year
+    estado = request.args.get('estado') if request.args.get('estado') in ESTADOS_METROLOGIA else None
+    try:
+        filas = db.metrologia_entre(date(anio, 1, 1), date(anio, 12, 31), estado)
+    except Exception:
+        logger.exception("No se pudo consultar el cronograma de metrología")
+        return _error(500, "No se pudo consultar el cronograma de metrología.")
+    meses = defaultdict(list)
+    for fila in filas:
+        meses[fila['fecha_programada'].month].append(fila)
+    resumen = {
+        'total': len(filas),
+        'pendientes': sum(f['estado'] == 'pendiente' for f in filas),
+        'vencidos': sum(f['estado'] == 'pendiente' and f['fecha_programada'] < hoy for f in filas),
+        'realizados': sum(f['estado'] == 'realizado' for f in filas),
+    }
+    return render_template('forms/laboratorio/cronograma_metrologia.html', anio=anio, estado=estado,
+                           meses=sorted(meses.items()), resumen=resumen, tipos=TIPOS_METROLOGIA,
+                           estados=ESTADOS_METROLOGIA, nombres_mes=_NOMBRES_MES,
+                           aviso=request.args.get('aviso'))
+
+
+_NOMBRES_MES = ('', 'Enero', 'Febrero', 'Marzo', 'Abril', 'Mayo', 'Junio', 'Julio', 'Agosto',
+                'Septiembre', 'Octubre', 'Noviembre', 'Diciembre')
+
+
+@sisem.route('/laboratorio/cronograma_metrologia/nuevo')
+@login_required
+def programar_metrologia():
+    return _pagina_programar_metrologia()
+
+
+@sisem.route('/laboratorio/cronograma_metrologia/guardar', methods=['POST'])
+@login_required
+def guardar_metrologia():
+    datos, problema = _validar_programacion_metrologia(request.form)
+    if problema:
+        return _pagina_programar_metrologia(request.form, problema, 400)
+    try:
+        db.programar_metrologia(datos)
+    except db.MetrologiaDuplicada:
+        return _pagina_programar_metrologia(
+            request.form, "Ese equipo ya tiene esa actividad programada en esa fecha.", 409)
+    except Exception:
+        logger.exception("No se pudo programar la actividad de metrología")
+        return _pagina_programar_metrologia(request.form, "No se pudo guardar. Inténtalo de nuevo.", 500)
+    return redirect(url_for('cronograma_metrologia', anio=datos['fecha_programada'].year, aviso='creado'))
+
+
+def _pagina_detalle_metrologia(fila, error=None, codigo=200):
+    return render_template('forms/laboratorio/metrologia_detalle.html', act=fila, personal=db.personal() or [],
+                           tipos=TIPOS_METROLOGIA, estados=ESTADOS_METROLOGIA, error=error,
+                           aviso=request.args.get('aviso')), codigo
+
+
+@sisem.route('/laboratorio/cronograma_metrologia/<int:metrologia_id>')
+@login_required
+def detalle_metrologia(metrologia_id):
+    return _pagina_detalle_metrologia(db.obtener_metrologia(metrologia_id) or abort(404))
+
+
+@sisem.route('/laboratorio/cronograma_metrologia/<int:metrologia_id>/actualizar', methods=['POST'])
+@login_required
+def actualizar_metrologia(metrologia_id):
+    fila = db.obtener_metrologia(metrologia_id) or abort(404)
+    datos, problema = _validar_programacion_metrologia(request.form, actualizar=True)
+    if problema:
+        return _pagina_detalle_metrologia(fila, problema, 400)
+    try:
+        db.actualizar_metrologia(metrologia_id, datos)
+    except Exception:
+        logger.exception("No se pudo actualizar la metrología %s", metrologia_id)
+        return _pagina_detalle_metrologia(fila, "No se pudo guardar. Inténtalo de nuevo.", 500)
+    return redirect(url_for('detalle_metrologia', metrologia_id=metrologia_id, aviso='actualizado'))
+
+
+def calcular_mediciones(filas):
+    """[(patrón, medido, tolerancia) en texto] -> (mediciones, resultado). Función pura.
+
+    error = medido − patrón; cumple si |error| ≤ tolerancia. El resultado es 'conforme' solo si
+    todas las mediciones cumplen. Lanza ValueError si un valor no es numérico.
+    """
+    mediciones = []
+    for n, (patron, medido, tolerancia) in enumerate(filas, start=1):
+        valores = [x.replace(',', '.').strip() for x in (patron, medido, tolerancia)]
+        if not any(valores):
+            continue
+        if not all(_MEDIDA.match(x) for x in valores) or Decimal(valores[2]) < 0:
+            raise ValueError(f"La medición {n} debe tener valor patrón, valor medido y tolerancia "
+                             "numéricos (tolerancia ≥ 0).")
+        p, m, t = (Decimal(x) for x in valores)
+        error = m - p
+        mediciones.append({'n': len(mediciones) + 1, 'patron': str(p), 'medido': str(m),
+                           'tolerancia': str(t), 'error': str(error), 'cumple': abs(error) <= t})
+    if not mediciones:
+        raise ValueError("Registra al menos una medición.")
+    return mediciones, ('conforme' if all(x['cumple'] for x in mediciones) else 'no_conforme')
+
+
+def _pagina_reporte_metrologia(valores=None, error=None, codigo=200):
+    if valores is None:
+        valores = MultiDict(request.args)
+        if not es_admin():                                    # el técnico por defecto es quien entra
+            valores.setdefault('tecnico', str(session.get('personal_id', '')))
+        programada = db.obtener_metrologia(int(valores['programacion'])) \
+            if valores.get('programacion', '').isdigit() else None
+        if programada:                                        # viene desde el cronograma
+            valores.setdefault('equipo', str(programada['id_equipo']))
+            valores.setdefault('tipo', programada['tipo'])
+    return render_template('forms/laboratorio/reporte_metrologia_form.html',
+                           equipos=db.equipos_cronograma() or [], personal=db.personal() or [],
+                           programadas=db.metrologia_por_realizar() or [], tipos=TIPOS_METROLOGIA,
+                           filas=_FILAS_MEDICION, v=valores, error=error,
+                           hoy=date.today().isoformat()), codigo
+
+
+@sisem.route('/laboratorio/reportes_metrologia')
+@login_required
+def reportes_metrologia():
+    return render_template('forms/laboratorio/reportes_metrologia.html',
+                           reportes=db.listar_reportes_metrologia(), tipos=TIPOS_METROLOGIA,
+                           guardado=_arg_entero('guardado', 1, 2**31 - 1))
+
+
+@sisem.route('/laboratorio/reportes_metrologia/nuevo')
+@login_required
+def nuevo_reporte_metrologia():
+    return _pagina_reporte_metrologia()
+
+
+@sisem.route('/laboratorio/reportes_metrologia/guardar', methods=['POST'])
+@login_required
+def guardar_reporte_metrologia():
+    form = request.form
+    f = _Formulario(form)
+    try:
+        columnas = [form.getlist(c) for c in ('med_patron', 'med_medido', 'med_tolerancia')]
+        if any(len(c) > _FILAS_MEDICION for c in columnas):
+            raise ValueError("Hay demasiadas filas de mediciones.")
+        mediciones, resultado = calcular_mediciones(zip_longest(*columnas, fillvalue=''))
+        id_equipo = f.id_de('equipo', 'Equipo', {e['id'] for e in db.equipos_cronograma() or []})
+        programadas = {p['id']: p for p in db.metrologia_por_realizar() or []}
+        id_cronograma = f.id_de('programacion', 'Actividad programada', programadas, obligatorio=False)
+        if id_cronograma and programadas[id_cronograma]['id_equipo'] != id_equipo:
+            raise ValueError("La actividad programada elegida es de otro equipo.")
+        fecha = f.fecha('fecha', 'Fecha')
+        proxima = f.fecha('proxima_fecha', 'Próxima fecha', obligatorio=False)
+        if proxima and proxima <= fecha:
+            raise ValueError("La próxima fecha debe ser posterior a la fecha del reporte.")
+        datos = {'id_equipo': id_equipo, 'id_cronograma': id_cronograma,
+                 'tipo': f.opcion('tipo', 'Tipo de actividad', TIPOS_METROLOGIA), 'fecha': fecha,
+                 'id_tecnico': f.id_de('tecnico', 'Técnico', _ids(db.personal())),
+                 'patron': f.texto('patron', 'Equipo patrón', 150),
+                 'certificado_patron': f.texto('certificado_patron', 'Certificado del patrón', 80,
+                                               obligatorio=False),
+                 'magnitud': f.texto('magnitud', 'Magnitud', 60), 'unidad': f.texto('unidad', 'Unidad', 20),
+                 'mediciones': mediciones, 'resultado': resultado, 'proxima_fecha': proxima,
+                 'observaciones': f.texto('observaciones', 'Observaciones', 2000, obligatorio=False),
+                 'creado_por': session.get('username')}
+    except ValueError as error:
+        return _pagina_reporte_metrologia(form, str(error), 400)
+    try:
+        nuevo_id = db.guardar_reporte_metrologia(datos)
+    except Exception:
+        logger.exception("No se pudo guardar el reporte de metrología")
+        return _pagina_reporte_metrologia(form, "No se pudo guardar. Inténtalo de nuevo.", 500)
+    return redirect(url_for('reportes_metrologia', guardado=nuevo_id))
+
+
+@sisem.route('/laboratorio/reportes_metrologia/<int:reporte_id>/descargar')
+@login_required
+def descargar_reporte_metrologia(reporte_id):
+    reporte = db.obtener_reporte_metrologia(reporte_id) or abort(404)
+    return _enviar_pdf(informes.generar_metrologia_pdf, reporte, f"el reporte de metrología {reporte_id}")
+
+
+# =========================================================================================
+# Mi cuenta: datos de quien inició sesión; el funcionario puede cambiar su contraseña
+# =========================================================================================
+@sisem.route('/cuenta')
+@login_required
+def mi_cuenta(error=None, codigo=200):
+    empleado = None if es_admin() else db.obtener_empleado(session.get('personal_id'))
+    return render_template('cuenta.html', empleado=empleado, error=error, clave_min=_CLAVE_MIN,
+                           aviso=request.args.get('aviso')), codigo
+
+
+@sisem.route('/cuenta/clave', methods=['POST'])
+@login_required
+@rol_requerido(ROL_FUNCIONARIO)
+def cambiar_mi_clave():
+    personal_id = session.get('personal_id')
+    clave_intentos = f"clave:{personal_id}"
+    if _intentos_recientes(clave_intentos) >= MAX_INTENTOS:
+        return mi_cuenta("Demasiados intentos. Espera unos minutos.", 429)
+
+    estado = db.estado_acceso(personal_id) or {}
+    if not check_password_hash(estado.get('clave_hash') or _HASH_FALSO, request.form.get('actual', '')):
+        _registrar_fallo(clave_intentos)
+        return mi_cuenta("La contraseña actual no es correcta.", 400)
+    nueva = request.form.get('nueva', '')
+    problema = _validar_clave(nueva, request.form.get('confirmar', ''), session.get('username'))
+    if problema:
+        return mi_cuenta(problema, 400)
+
+    nuevo_hash = generate_password_hash(nueva)
+    try:
+        db.cambiar_clave(personal_id, nuevo_hash)
+    except Exception:
+        logger.exception("No se pudo cambiar la clave del funcionario %s", personal_id)
+        return mi_cuenta("No se pudo cambiar la contraseña. Inténtalo de nuevo.", 500)
+    session['huella'] = _huella(nuevo_hash)       # esta sesión sigue; las demás se cierran
+    _fallos.pop(clave_intentos, None)
+    logger.info("El funcionario %s cambió su contraseña", personal_id)
+    return redirect(url_for('mi_cuenta', aviso='clave'))
+
 
 if __name__ == '__main__':
     sisem.run(debug=DEBUG, host=os.getenv('FLASK_HOST', '127.0.0.1'),

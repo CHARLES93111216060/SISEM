@@ -1,0 +1,58 @@
+{% extends 'layout/base.html' %}
+{% import '_macros.html' as m %}
+{% block title %}Empleados{% endblock %}
+{% block content %}
+<div class="dashboard-shell">
+    <section class="page-hero">
+        <div>
+            <span class="eyebrow">Talento humano</span>
+            <h2>Empleados</h2>
+            <p>Personal de la empresa (tabla <em>personal</em>). Todos tienen el rol de funcionario.</p>
+        </div>
+        <div class="hero-actions">
+            <a class="btn btn-primary" href="{{ url_for('nuevo_empleado') }}">Nuevo empleado</a>
+            <a class="btn btn-secondary" href="{{ url_for('roles') }}">Roles y permisos</a>
+        </div>
+    </section>
+
+    <div class="page-panel">
+        {{ m.avisos(ok=('Empleado «' ~ guardado ~ '» guardado.') if guardado) }}
+        <div class="panel-head"><div><h3>Personal registrado</h3><p>{{ empleados|length }} en total</p></div></div>
+        {% if empleados %}
+        <label class="sr-only" for="filtro_empleados">Filtrar empleados</label>
+        <input type="search" class="form-control mb-3" id="filtro_empleados" autocomplete="off"
+               data-filtro-tabla="tabla_empleados" placeholder="Filtrar por nombre, documento, cargo…">
+        <div class="table-responsive">
+            <table id="tabla_empleados">
+                <thead>
+                    <tr><th>Nombre</th><th>Documento</th><th>Cargo</th><th>Profesión</th><th>Correo</th>
+                        <th>Teléfono</th><th>Acceso</th><th><span class="sr-only">Acciones</span></th></tr>
+                </thead>
+                <tbody>
+                    {% for e in empleados %}
+                    <tr>
+                        <td><strong>{{ e.nombre }}</strong></td>
+                        <td>{{ e.documento }}</td>
+                        <td>{{ e.cargo }}</td>
+                        <td>{{ e.profesion }}</td>
+                        <td>{{ e.correo or '—' }}</td>
+                        <td>{{ e.telefono or '—' }}</td>
+                        <td>{% if e.acceso_activo %}<span class="crono-chip crono-realizado">Activo</span>
+                            {% else %}<span class="crono-chip crono-cancelado">Sin acceso</span>{% endif %}</td>
+                        <td class="acciones">
+                            <a class="btn btn-secondary btn-sm" href="{{ url_for('editar_empleado', empleado_id=e.id) }}">Editar</a>
+                            <a class="btn btn-primary btn-sm" href="{{ url_for('configurar_acceso', empleado_id=e.id) }}">Acceso</a>
+                        </td>
+                    </tr>
+                    {% endfor %}
+                </tbody>
+            </table>
+        </div>
+        <p class="vacio" id="tabla_empleados_vacio" hidden>Ningún empleado coincide con la búsqueda.</p>
+        {% else %}
+        <p class="vacio">Todavía no hay empleados registrados.</p>
+        {% endif %}
+    </div>
+</div>
+{% endblock %}
+{% block scripts %}<script src="{{ url_for('static', filename='js/buscador.js') }}"></script>{% endblock %}

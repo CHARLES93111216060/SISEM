@@ -10,11 +10,12 @@ USUARIO, CLAVE = 'admin', 'Contraseña-de-prueba-1'
 
 
 def cliente_sesion(autenticado=True):
+    """Cliente con sesión de administrador (o sin sesión si autenticado=False)."""
     c = sisem.test_client()
     with c.session_transaction() as s:
         s['_csrf'] = 'token-de-prueba'
         if autenticado:
-            s['username'] = USUARIO
+            s.update(username=USUARIO, rol='admin', nombre=USUARIO)
     return c
 
 

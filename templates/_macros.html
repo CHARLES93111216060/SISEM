@@ -1,0 +1,27 @@
+{# Piezas reutilizadas por los módulos de Comercial, Talento humano y Laboratorio.
+   Uso: {% import '_macros.html' as m %} y luego {{ m.estado(ESTADOS, valor, fecha) }}. #}
+
+{# Etiqueta de color del estado. Reutiliza los colores del cronograma (.crono-chip / .crono-<clase>).
+   estado_visible() (app.py) devuelve (texto, clase) y marca "Vencido" un pendiente con fecha pasada. #}
+{% macro estado(estados, valor, fecha=none) -%}
+{%- set texto, clase = estado_visible(estados, valor, fecha) -%}
+<span class="crono-chip crono-{{ clase }}">{{ texto }}</span>
+{%- endmacro %}
+
+{# Avisos de la página: éxito (aviso/guardado) y error #}
+{% macro avisos(error=none, ok=none) -%}
+{% if ok %}<div class="alert alert-ok" role="status">{{ ok }}</div>{% endif %}
+{% if error %}<div class="alert alert-error" role="alert">{{ error }}</div>{% endif %}
+{%- endmacro %}
+
+{# <option> de un catálogo de tuplas (id, nombre), marcando la elegida en «v» #}
+{% macro opciones(catalogo, elegido) -%}
+{% for fila in catalogo %}<option value="{{ fila[0] }}"{{ ' selected' if elegido == fila[0]|string }}>{{ fila[1] }}</option>
+{% endfor %}
+{%- endmacro %}
+
+{# <option> de un diccionario {valor: texto} o {valor: (texto, clase)} #}
+{% macro opciones_dict(dic, elegido) -%}
+{% for clave, texto in dic.items() %}<option value="{{ clave }}"{{ ' selected' if elegido == clave }}>{{ texto[0] if texto is not string else texto }}</option>
+{% endfor %}
+{%- endmacro %}

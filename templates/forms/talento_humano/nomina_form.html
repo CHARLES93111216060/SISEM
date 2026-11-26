@@ -1,0 +1,83 @@
+{% extends 'layout/base.html' %}
+{% import '_macros.html' as m %}
+{% block title %}Liquidar nómina{% endblock %}
+{% block content %}
+<div class="dashboard-shell">
+    <section class="page-hero">
+        <div>
+            <span class="eyebrow">Talento humano</span>
+            <h2>Liquidar nómina</h2>
+            <p>Una liquidación por empleado y mes. Escribe los valores sin puntos de miles.</p>
+        </div>
+        <div class="hero-actions"><a class="btn btn-secondary" href="{{ url_for('nomina') }}">Volver</a></div>
+    </section>
+
+    <div class="page-panel">
+        {{ m.avisos(error) }}
+        <div class="alert alert-info">
+            Cálculo simplificado: salario y auxilio proporcionales a los días trabajados (base 30);
+            salud {{ salud }} % y pensión {{ pension }} % sobre (salario del periodo + horas extra).
+            No incluye retención en la fuente, fondo de solidaridad pensional ni prestaciones sociales:
+            si aplican, regístralas en «Otras deducciones» y revisa la liquidación con contabilidad.
+        </div>
+        <form action="{{ url_for('guardar_nomina') }}" method="POST" autocomplete="off">
+            <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+            <h3 class="hv-titulo">Empleado y periodo</h3>
+            <div class="hv-grid hv-grid-3">
+                <div class="mb-3">
+                    <label class="form-label" for="empleado">Empleado</label>
+                    <select class="form-control" id="empleado" name="empleado" required>
+                        <option value="">-- Seleccione --</option>
+                        {{ m.opciones(empleados, v.get('empleado')) }}
+                    </select>
+                </div>
+                <div class="mb-3">
+                    <label class="form-label" for="periodo">Periodo (mes)</label>
+                    <input type="month" class="form-control" id="periodo" name="periodo" value="{{ v.get('periodo', mes_actual) }}" required>
+                </div>
+                <div class="mb-3">
+                    <label class="form-label" for="dias_trabajados">Días trabajados</label>
+                    <input type="number" class="form-control" id="dias_trabajados" name="dias_trabajados" min="0" max="30" step="1"
+                           value="{{ v.get('dias_trabajados', '30') }}" required>
+                </div>
+            </div>
+
+            <h3 class="hv-titulo">Devengado</h3>
+            <div class="hv-grid">
+                <div class="mb-3">
+                    <label class="form-label" for="salario_base">Salario base mensual</label>
+                    <input type="number" class="form-control" id="salario_base" name="salario_base" min="0" step="0.01" value="{{ v.get('salario_base', '') }}" required>
+                </div>
+                <div class="mb-3">
+                    <label class="form-label" for="auxilio_transporte">Auxilio de transporte mensual (si aplica)</label>
+                    <input type="number" class="form-control" id="auxilio_transporte" name="auxilio_transporte" min="0" step="0.01" value="{{ v.get('auxilio_transporte', '') }}">
+                </div>
+                <div class="mb-3">
+                    <label class="form-label" for="horas_extra">Horas extra y recargos (valor)</label>
+                    <input type="number" class="form-control" id="horas_extra" name="horas_extra" min="0" step="0.01" value="{{ v.get('horas_extra', '') }}">
+                </div>
+                <div class="mb-3">
+                    <label class="form-label" for="bonificaciones">Bonificaciones (no salariales)</label>
+                    <input type="number" class="form-control" id="bonificaciones" name="bonificaciones" min="0" step="0.01" value="{{ v.get('bonificaciones', '') }}">
+                </div>
+            </div>
+
+            <h3 class="hv-titulo">Deducciones adicionales</h3>
+            <div class="hv-grid">
+                <div class="mb-3">
+                    <label class="form-label" for="otras_deducciones">Otras deducciones (préstamos, libranzas, retención…)</label>
+                    <input type="number" class="form-control" id="otras_deducciones" name="otras_deducciones" min="0" step="0.01" value="{{ v.get('otras_deducciones', '') }}">
+                </div>
+                <div class="mb-3">
+                    <label class="form-label" for="observaciones">Observaciones</label>
+                    <textarea class="form-control" id="observaciones" name="observaciones" rows="2" maxlength="1000">{{ v.get('observaciones', '') }}</textarea>
+                </div>
+            </div>
+            <div class="hv-acciones">
+                <button type="submit" class="btn btn-primary">Liquidar y guardar</button>
+                <a class="btn btn-secondary" href="{{ url_for('nomina') }}">Cancelar</a>
+            </div>
+        </form>
+    </div>
+</div>
+{% endblock %}

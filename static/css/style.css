@@ -1235,6 +1235,51 @@ td.acciones{
     color:#5b6b7f;
 }
 
+/* Módulos de Comercial, Talento humano, Laboratorio y Mi cuenta */
+.ayuda{
+    display:block;
+    margin:4px 0 12px;
+    color:#5b6b7f;
+    font-size:0.85rem;
+}
+
+.texto-largo{
+    white-space:pre-line;
+    color:#2d4054;
+}
+
+.hv-grid > p{
+    margin:0 0 10px;
+}
+
+td.lbl-total{
+    text-align:right;
+    font-weight:600;
+}
+
+a.card-enlace{
+    color:inherit;
+    text-decoration:none;
+    transition:box-shadow 0.15s ease, transform 0.15s ease;
+}
+
+a.card-enlace:hover,
+a.card-enlace:focus-visible{
+    transform:translateY(-2px);
+    box-shadow:0 8px 20px rgba(31, 78, 121, 0.15);
+}
+
+a.user-pill{
+    color:inherit;
+    text-decoration:none;
+}
+
+a.user-pill:hover,
+a.user-pill:focus-visible{
+    outline:2px solid #66a6be;
+    outline-offset:2px;
+}
+
 /* Submenús abiertos con clic/tap (además de hover) */
 .has-submenu.abierto .submenu{
     display:flex;

@@ -1,0 +1,54 @@
+{% extends 'layout/base.html' %}
+{% import '_macros.html' as m %}
+{% block title %}Cuenta de cobro {{ numero_documento('cuenta', c.id) }}{% endblock %}
+{% block content %}
+<div class="dashboard-shell">
+    <section class="page-hero">
+        <div>
+            <span class="eyebrow">Cuentas de cobro</span>
+            <h2>Cuenta de cobro {{ numero_documento('cuenta', c.id) }}</h2>
+            <p>{{ m.estado(estados, c.estado) }}</p>
+        </div>
+        <div class="hero-actions">
+            <a class="btn btn-primary" href="{{ url_for('descargar_cuenta_cobro', cuenta_id=c.id) }}">Descargar PDF</a>
+            <a class="btn btn-secondary" href="{{ url_for('cuentas_cobro') }}">Volver</a>
+        </div>
+    </section>
+
+    <div class="page-panel">
+        {{ m.avisos(ok={'creado': 'Cuenta de cobro radicada.', 'estado': 'Estado actualizado.'}.get(aviso)) }}
+        <div class="hv-grid">
+            <p><strong>Empleado:</strong> {{ c.empleado }}</p>
+            <p><strong>Documento:</strong> {{ c.documento }}</p>
+            <p><strong>Fecha:</strong> {{ c.fecha|fecha }}</p>
+            <p><strong>Periodo:</strong> {{ c.periodo_inicio|fecha }} al {{ c.periodo_fin|fecha }}</p>
+            <p><strong>Valor:</strong> {{ c.valor|pesos }}</p>
+            <p><strong>Radicada por:</strong> {{ c.creado_por or '—' }}</p>
+        </div>
+        <h3 class="hv-titulo">Concepto</h3>
+        <p class="texto-largo">{{ c.concepto }}</p>
+        {% if c.observaciones %}
+        <h3 class="hv-titulo">Observaciones</h3>
+        <p class="texto-largo">{{ c.observaciones }}</p>
+        {% endif %}
+
+        {% if es_admin %}
+        <h3 class="hv-titulo">Gestionar</h3>
+        <form action="{{ url_for('estado_cuenta_cobro', cuenta_id=c.id) }}" method="POST">
+            <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+            <div class="hv-grid">
+                <div class="mb-3">
+                    <label class="form-label" for="estado">Estado</label>
+                    <select class="form-control" id="estado" name="estado">{{ m.opciones_dict(estados, c.estado) }}</select>
+                </div>
+                <div class="mb-3">
+                    <label class="form-label" for="observaciones">Observaciones (motivo del rechazo, fecha de pago…)</label>
+                    <textarea class="form-control" id="observaciones" name="observaciones" rows="2" maxlength="1000">{{ c.observaciones or '' }}</textarea>
+                </div>
+            </div>
+            <button type="submit" class="btn btn-primary">Guardar</button>
+        </form>
+        {% endif %}
+    </div>
+</div>
+{% endblock %}

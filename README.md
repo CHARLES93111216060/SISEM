@@ -5,6 +5,14 @@ las hojas de vida de los equipos (con descarga de los tres documentos en PDF), p
 inventario de equipos, ya sea uno por uno o cargando un archivo Excel, y para planear los mantenimientos
 en un cronograma mensual y anual.
 
+También cubre:
+- **Comercial:** facturación interna y órdenes de compra.
+- **Talento humano:** empleados, roles y permisos, cuentas de cobro y nómina.
+- **Laboratorio:** cronograma y reportes de metrología.
+
+Todos estos documentos se descargan en PDF. Hay **dos roles**: el **administrador**, definido en las
+variables de entorno, y el **funcionario**, que es cada persona de la tabla `personal` con acceso habilitado.
+
 ## Estructura del proyecto
 
 ```text
@@ -19,6 +27,12 @@ SISEM_PROJECT/
 │                               #     _fila_excel_a_formulario, procesar_excel);
 │                               #   · cronograma (_validar_programacion, actualizar_cronograma);
 │                               #   · reporte general (_validar_reporte_general, _pagina_reporte_general).
+│                               #   Roles: login de admin (entorno) y de funcionarios (tabla personal),
+│                               #   _sesion_vigente (revalida al funcionario en cada petición),
+│                               #   @login_required, @solo_admin / rol_requerido, PERMISOS.
+│                               #   Módulos: _Formulario (validación común), facturación y órdenes
+│                               #   (_leer_items, _totales), empleados y acceso, cuentas de cobro,
+│                               #   nómina (liquidar_nomina), metrología (calcular_mediciones), Mi cuenta.
 ├── requirements.txt            # Dependencias de Python con versión fija (formato paquete==versión).
 ├── Dockerfile                  # Imagen para Render: Python + librerías de sistema de WeasyPrint (Pango),
 │                               #   usuario sin privilegios y arranque con gunicorn.
@@ -43,13 +57,24 @@ SISEM_PROJECT/
 │   │                           #     programar (varias fechas en una transacción, sin duplicar) y actualizar.
 │   │                           #   · Reporte general: guardar (informacion como jsonb), listar con nombres
 │   │                           #     (JOIN) y leer uno para el PDF.
+│   │                           #   · Personal y acceso: acceso_personal, estado_acceso, empleados,
+│   │                           #     guardar_empleado, configurar_acceso, cambiar_clave (la clave nunca sale
+│   │                           #     hacia las plantillas).
+│   │                           #   · Facturas y órdenes: guardar_documento (documento + ítems en una
+│   │                           #     transacción), obtener, listar y cambiar estado.
+│   │                           #   · Cuentas de cobro y nómina (filtradas por empleado para el funcionario).
+│   │                           #   · Metrología: programar, consultar, actualizar y guardar reportes (marca la
+│   │                           #     actividad como realizada en la misma transacción).
+│   │                           #   · resumen_pendientes: contadores del panel principal.
 │   └── postgres/               # Migración de MariaDB a PostgreSQL
 │       ├── LEEME.md            # Guía paso a paso de la migración.
 │       ├── 00_tipos_en_mariadb.sql   # Consulta los tipos reales de columnas en MariaDB.
 │       ├── 01_esquema.sql            # Crea las tablas, claves foráneas e índices en PostgreSQL
 │       │                             #   (no incluye las tablas de hojas de vida; ver "Base de datos").
 │       ├── 02_ajustar_secuencias.sql # Ajusta los autonuméricos después de copiar los datos.
-│       └── 03_verificar.sql          # Cuenta filas por tabla para comparar ambos motores.
+│       ├── 03_verificar.sql          # Cuenta filas por tabla para comparar ambos motores.
+│       └── 04_roles_y_modulos.sql    # Columnas de acceso en personal y tablas de facturación, órdenes,
+│                                     #   cuentas de cobro, nómina y metrología (solo agrega; re-ejecutable).
 │
 ├── informes/
 │   ├── __init__.py             # Marca la carpeta como paquete de Python.
@@ -63,20 +88,26 @@ SISEM_PROJECT/
 │                               #     versión y fechas del formato), contexto_reporte_general,
 │                               #     generar_reporte_general_pdf y el nombre del archivo
 │                               #     (reporte_servicio_<id>_<inventario>.pdf).
+│                               #   · Documentos administrativos: EMPRESA_DOCUMENTOS, numero_documento
+│                               #     (FAC-000001, OC-, CC-, NOM-, MET-), pesos ($ 1.234,50) y
+│                               #     generar_factura/orden/cuenta_cobro/nomina/metrologia_pdf.
 │                               #   · _html_a_pdf: conversión HTML → PDF con WeasyPrint, que solo puede
 │                               #     leer archivos de static/ (ni internet ni otros archivos del servidor).
 │
 ├── templates/                  # Plantillas Jinja2 (HTML)
-│   ├── login.html              # Inicio de sesión (con token CSRF).
-│   ├── dashboard.html          # Panel principal con estadísticas (reportes totales, del mes, clientes).
+│   ├── login.html              # Inicio de sesión (con token CSRF) para admin y funcionarios.
+│   ├── dashboard.html          # Panel principal: reportes, clientes y pendientes según el rol
+│   │                           #   (metrología vencida, cuentas de cobro, facturas, órdenes).
+│   ├── cuenta.html             # Mi cuenta: datos del usuario y cambio de contraseña (funcionario).
+│   ├── _macros.html            # Macros comunes: etiqueta de estado, avisos y opciones de listas.
 │   ├── clientes.html           # Listado de clientes registrados.
 │   ├── historial.html          # Listado paginado de reportes con botón para descargar el PDF.
 │   ├── proximamente.html       # Página para los módulos del menú que aún no existen.
 │   ├── error.html              # Página de error amigable (sin detalles internos).
 │   ├── layout/
 │   │   ├── base.html           # Esqueleto común: CSS, meta con token CSRF, menú, cabecera y scripts.
-│   │   ├── header.html         # Cabecera: usuario conectado y botón de cerrar sesión (POST).
-│   │   ├── sidebar.html        # Menú lateral con los módulos (incluye "Hojas de vida de los equipos").
+│   │   ├── header.html         # Cabecera: nombre y rol (enlace a Mi cuenta) y cerrar sesión (POST).
+│   │   ├── sidebar.html        # Menú lateral; muestra solo los módulos que el rol puede usar.
 │   │   └── footer.html         # Pie de página.
 │   ├── forms/
 │   │   ├── forms_mantenimiento.html          # Página con el selector de formularios.
@@ -98,8 +129,29 @@ SISEM_PROJECT/
 │   │   │   │                                 #   buscador que filtra la tabla mientras se escribe.
 │   │   │   ├── ingresar_inventario.html      # Formulario para registrar un equipo (listas desplegables con
 │   │   │   │                                 #   los catálogos); conserva lo escrito si hay un error.
-│   │   │   └── cargar_excel.html             # Carga de inventario desde un .xlsx: formato esperado, resumen
-│   │   │                                     #   del resultado y tabla con los errores por fila.
+│   │   │   ├── cargar_excel.html             # Carga de inventario desde un .xlsx: formato esperado, resumen
+│   │   │   │                                 #   del resultado y tabla con los errores por fila.
+│   │   │   ├── facturacion.html              # Listado de facturas con buscador, estado y PDF.
+│   │   │   ├── ordenes.html                  # Listado de órdenes de compra con buscador, estado y PDF.
+│   │   │   ├── documento_form.html           # Formulario compartido de factura / orden (hasta 10 ítems).
+│   │   │   └── documento_detalle.html        # Detalle compartido: datos, ítems, totales y cambio de estado.
+│   │   ├── talento_humano/
+│   │   │   ├── empleados.html                # Personal con buscador, estado del acceso, editar y acceso.
+│   │   │   ├── empleado_form.html            # Crear / editar empleado.
+│   │   │   ├── roles.html                    # Matriz de permisos por rol y acceso de cada persona.
+│   │   │   ├── acceso.html                   # Usuario, contraseña y activación del acceso de un empleado.
+│   │   │   ├── cuentas_cobro.html            # Listado (admin: todas; funcionario: las suyas).
+│   │   │   ├── cuenta_cobro_form.html        # Radicar cuenta de cobro.
+│   │   │   ├── cuenta_cobro_detalle.html     # Detalle y gestión del estado (admin).
+│   │   │   ├── nomina.html                   # Liquidaciones (admin: todas; funcionario: sus desprendibles).
+│   │   │   ├── nomina_form.html              # Liquidar la nómina de un empleado y mes.
+│   │   │   └── nomina_detalle.html           # Devengados, deducciones y neto.
+│   │   ├── laboratorio/
+│   │   │   ├── cronograma_metrologia.html    # Año agrupado por mes, resumen y filtros.
+│   │   │   ├── metrologia_form.html          # Programar calibración / verificación / calificación.
+│   │   │   ├── metrologia_detalle.html       # Seguimiento de una actividad y botón "Registrar reporte".
+│   │   │   ├── reportes_metrologia.html      # Listado de reportes con resultado y PDF.
+│   │   │   └── reporte_metrologia_form.html  # Patrón, magnitud y hasta 10 mediciones.
 │   │   ├── reporte_general/
 │   │   │   ├── crear_reporte_general.html    # Formulario del reporte de servicio (FT-GC-041): cliente, equipo,
 │   │   │   │                                 #   servicio, repuestos (5 filas), cierre y entrega. Conserva lo
@@ -145,8 +197,10 @@ SISEM_PROJECT/
 │       ├── concentrador_o2.html    # Réplica del formato Word PM-013.
 │       ├── protocolo_generico.html # Resto de equipos (se arma a partir de su formulario).
 │       ├── hoja_de_vida.html       # Hoja de vida de equipo médico (formato PM_003, una página, con foto).
-│       └── reporte_general.html    # Reporte de servicio (réplica de Formatos/REPORTE DE SERVICIO.pdf,
-│                                   #   FT-GC-041). El encabezado se repite en cada hoja con "PÁGINA n DE total".
+│       ├── reporte_general.html    # Reporte de servicio (réplica de Formatos/REPORTE DE SERVICIO.pdf,
+│       │                           #   FT-GC-041). El encabezado se repite en cada hoja con "PÁGINA n DE total".
+│       └── documento.html          # Plantilla genérica de factura, orden de compra, cuenta de cobro,
+│                                   #   desprendible de nómina y reporte de metrología.
 │
 ├── static/                     # Archivos públicos que sirve Flask
 │   ├── css/
@@ -176,6 +230,8 @@ SISEM_PROJECT/
 │   │                           #   vida (guardar, validar, duplicados, consultar, PDF), inventario (listado,
 │   │                           #   formulario, serie repetida), carga por Excel (archivos maliciosos incluidos)
 │   │                           #   y cronograma (vistas, frecuencia, duplicados, validación, seguimiento).
+│   ├── test_modulos.py         # Pruebas de roles (login, permisos, sesión revocada) y de facturación,
+│   │                           #   órdenes, empleados, acceso, cuentas de cobro, nómina, metrología y Mi cuenta.
 │   └── test_db.py              # Pruebas de database/db.py con un pool de conexiones simulado.
 │
 └── tools/
@@ -212,10 +268,31 @@ SISEM_PROJECT/
 | `/comercial/guardar_inventario`                    | POST (formulario) | Valida y guarda un equipo; redirige al formulario vacío   |
 | `/comercial/cargar_excel`                          | GET               | Página para cargar inventario desde un .xlsx              |
 | `/comercial/procesar_excel`                        | POST (multipart)  | Valida el archivo y guarda cada fila; muestra el resumen   |
-| `/<modulo>/<seccion>`                              | GET               | Módulos del menú aún no implementados ("próximamente") |
+| `/comercial/facturacion` · `/nueva` · `/guardar`   | GET · GET · POST  | **Admin.** Facturas: listado, formulario y guardado         |
+| `/comercial/facturacion/<id>` · `/estado` · `/descargar` | GET · POST · GET | **Admin.** Detalle, cambio de estado y PDF            |
+| `/comercial/ordenes` · `/nueva` · `/guardar`       | GET · GET · POST  | **Admin.** Órdenes de compra: listado, formulario y guardado |
+| `/comercial/ordenes/<id>` · `/estado` · `/descargar` | GET · POST · GET | **Admin.** Detalle, cambio de estado y PDF               |
+| `/talento_humano/empleados` · `/nuevo` · `/<id>/editar` · `/guardar` | GET · GET · GET · POST | **Admin.** Empleados       |
+| `/talento_humano/roles` · `/roles/<id>` · `/roles/<id>/guardar` | GET · GET · POST | **Admin.** Matriz de permisos y acceso de cada empleado |
+| `/talento_humano/cuentas_cobro` · `/nueva` · `/guardar` | GET · GET · POST | Cuentas de cobro (el funcionario solo las suyas)      |
+| `/talento_humano/cuentas_cobro/<id>` · `/descargar` | GET              | Detalle y PDF (404 si es de otra persona)                    |
+| `/talento_humano/cuentas_cobro/<id>/estado`        | POST              | **Admin.** Aprobar, pagar o rechazar                         |
+| `/talento_humano/nomina` · `/<id>` · `/<id>/descargar` | GET           | Nómina (el funcionario solo sus desprendibles)               |
+| `/talento_humano/nomina/nueva` · `/guardar`        | GET · POST        | **Admin.** Liquidar la nómina de un empleado y mes           |
+| `/laboratorio/cronograma_metrologia?anio=…&estado=…` | GET             | Cronograma de metrología del año                             |
+| `/laboratorio/cronograma_metrologia/nuevo` · `/guardar` | GET · POST   | Programar una actividad                                      |
+| `/laboratorio/cronograma_metrologia/<id>` · `/actualizar` | GET · POST | Detalle y seguimiento                                        |
+| `/laboratorio/reportes_metrologia` · `/nuevo?programacion=…` · `/guardar` | GET · GET · POST | Reportes de metrología     |
+| `/laboratorio/reportes_metrologia/<id>/descargar`  | GET               | PDF del reporte de metrología                                |
+| `/cuenta` · `/cuenta/clave`                        | GET · POST        | Mi cuenta; cambiar la contraseña (solo funcionario)          |
+| `/comercial/clientes`, `/talento_humano/asistencia`, `/talento_humano/reportes`, `/laboratorio/hojas_de_vida` | GET | Rutas antiguas del menú: redirigen a su página nueva |
+| `/<modulo>/<seccion>`                              | GET               | Módulos anunciados en `PROXIMAMENTE` (hoy vacío) o 404   |
 | `/healthz`                                         | GET               | Chequeo de salud para Render (sin sesión)                 |
 
-Todas, salvo `/login` y `/healthz`, exigen sesión iniciada. Todos los POST exigen el token CSRF.
+Todas, salvo `/login` y `/healthz`, exigen sesión iniciada. Todos los POST exigen el token CSRF. Las marcadas
+**Admin** responden 403 a un funcionario. Además son solo del administrador `/comercial/ingresar_inventario`,
+`/comercial/guardar_inventario`, `/comercial/cargar_excel` y `/comercial/procesar_excel`: el funcionario solo ve el
+inventario.
 
 ## Base de datos
 
@@ -232,6 +309,18 @@ PostgreSQL. Tablas que usa la aplicación:
 | `v_hojas_vida` (vista)                                                    | Une la hoja de vida con inventario, tipo, marca, cliente y responsable; la usan el PDF y la consulta                                          |
 | `cronograma_mantenimientos`                                               | Una fila por cada fecha programada: equipo, tipo de mantenimiento, frecuencia, fecha, estado, técnico y observaciones                         |
 | `reporte_general`                                                         | Reportes de servicio: `cliente`, `serie` (id de `inventario`), `servicio` (id de `mantenimientos`) y `entregado_por` (id de `personal`) con llave foránea; `area` (nombre del área), `solicitante`, `ciudad`, `fecha_entrega` y el resto del formulario en `informacion` (jsonb) |
+
+| `personal` (columnas de acceso)                                           | `funcion` ('funcionario'), `usuario` (único sin distinguir mayúsculas), `clave_hash` (scrypt), `acceso_activo`, `ultimo_acceso` |
+| `facturas`, `facturas_items`                                              | Facturas internas a clientes y sus ítems (cantidad, valor unitario, IVA 0/5/19 %); totales recalculados por el servidor |
+| `ordenes_compra`, `ordenes_compra_items`                                  | Órdenes de compra a proveedores y sus ítems |
+| `cuentas_cobro`                                                           | Cuentas de cobro por empleado y periodo; estado pendiente / aprobada / pagada / rechazada |
+| `nomina`                                                                  | Una liquidación por empleado y mes (`UNIQUE (id_personal, periodo)`) con devengados, deducciones y neto |
+| `metrologia_cronograma`                                                   | Actividades de calibración / verificación / calificación por equipo y fecha (sin duplicados) |
+| `metrologia_reportes`                                                     | Resultados: patrón, magnitud, unidad, mediciones (jsonb), resultado conforme / no conforme |
+
+Las tablas y columnas de esta última parte se crean con `database/postgres/04_roles_y_modulos.sql`. Las llaves
+foráneas hacia `personal`, `clientes` e `inventario` **no** borran en cascada: no se puede borrar un empleado que
+tenga cuentas o nóminas. Para retirar a alguien, desactiva su acceso.
 
 Contenido de `reporte_general.informacion`:
 
@@ -263,6 +352,52 @@ casi todas las marcas están repetidas, así que las listas desplegables muestra
 por Excel no se ve afectada: cuando un nombre tiene varios ids usa el **menor** (en `tipo_equipo`, los 1-16 que
 usan los formularios y PDF de mantenimiento). `mantenimientos` también está repetido (ids 1-9 y 10-18): el
 formulario del cronograma muestra cada nombre una sola vez y guarda el id menor.
+
+## Roles y permisos
+
+| Módulo                                                   | Administrador                          | Funcionario                         |
+| -------------------------------------------------------- | -------------------------------------- | ----------------------------------- |
+| Inicio, clientes, Mi cuenta                              | Ver                                    | Ver y cambiar su contraseña         |
+| Mantenimiento (reportes, historial, reporte general, hojas de vida, cronograma) | Todo           | Todo                                |
+| Comercial · Inventario                                   | Ver, ingresar y cargar Excel           | Solo ver                            |
+| Comercial · Facturación y órdenes de compra              | Todo                                   | Sin acceso                          |
+| Talento humano · Empleados, roles y permisos             | Todo                                   | Sin acceso                          |
+| Talento humano · Cuentas de cobro                        | Ver todas, radicar y cambiar estado    | Radicar y ver las propias           |
+| Talento humano · Nómina                                  | Liquidar y ver todas                   | Ver y descargar sus desprendibles   |
+| Laboratorio · Metrología y hojas de vida                 | Todo                                   | Todo                                |
+
+La misma tabla se muestra en la página *Roles y permisos* (lista `PERMISOS` de `app.py`). Quien la hace cumplir
+en el servidor es `@solo_admin` y el filtro por `personal_id` de cada ruta: ocultar un enlace del menú no basta.
+
+```mermaid
+flowchart TD
+    U[Navegador] -->|POST /login usuario + clave + CSRF| L[app.py · login]
+    L -->|¿usuario = ADMIN_USER?| A{Admin}
+    A -->|sí: hash de ADMIN_PASSWORD_HASH| S1[(sesión rol=admin)]
+    A -->|no| P[db.acceso_personal<br/>usuario sin mayúsculas]
+    P -->|clave_hash + acceso_activo<br/>+ funcion='funcionario'| S2[(sesión rol=funcionario<br/>personal_id + huella de la clave)]
+    S2 -->|cada petición| V[_sesion_vigente<br/>db.estado_acceso]
+    V -->|acceso desactivado o clave cambiada| X[sesión cerrada → /login]
+    S1 & S2 --> R[@login_required → @solo_admin → 403<br/>filtros por personal_id → 404]
+```
+
+1. **Administrador.** Es el usuario `ADMIN_USER` de las variables de entorno, con su clave en
+   `ADMIN_PASSWORD_HASH`. No cambia respecto a antes.
+2. **Funcionario.** Es una persona de `personal` con `funcion = 'funcionario'`, usuario, contraseña y
+   `acceso_activo = true`. El administrador lo habilita en **Talento humano → Roles y permisos → Configurar acceso**:
+   - asigna usuario (no puede ser el del administrador ni repetirse) y contraseña (10-128 caracteres);
+   - la contraseña se guarda como hash scrypt y nunca se envía a las plantillas.
+
+   Los empleados nuevos entran sin acceso.
+3. **Inicio de sesión.** Primero se compara con el administrador. Si no es él, se busca en `personal`. La
+   verificación de la clave tarda lo mismo aunque el usuario no exista, y se mantiene el bloqueo de 5 intentos por IP.
+4. **Revalidación.** En cada petición de un funcionario, `_sesion_vigente` vuelve a leer su acceso. Si el
+   administrador lo desactiva o le cambia la contraseña, sus sesiones abiertas se cierran de inmediato. La sesión
+   guarda una *huella* (sha256 recortado) de la clave, no la clave.
+5. **Mi cuenta.** El funcionario puede cambiar su contraseña dando la actual, con 5 intentos como máximo. Su sesión
+   sigue abierta y las de otros equipos se cierran. La contraseña del administrador se cambia en las variables de entorno.
+6. **Datos propios.** Un funcionario que pide una cuenta de cobro o una nómina ajena recibe **404**, para no revelar
+   que existe. Al radicar una cuenta de cobro queda siempre a su nombre, aunque envíe otro empleado en el formulario.
 
 ## Flujo de datos
 
@@ -510,6 +645,71 @@ flowchart TD
 del periodo falla (por ejemplo, porque la tabla no existe en esa base), la página responde con error y lo registra en
 el log, en lugar de decir que no hay mantenimientos.
 
+### Comercial: facturación y órdenes de compra (solo administrador)
+
+```mermaid
+flowchart LR
+    U[Navegador] -->|POST /guardar<br/>datos + hasta 10 ítems + CSRF| V[_validar_documento<br/>_leer_items · _totales]
+    V -->|INSERT documento + ítems<br/>una transacción| DB[(facturas / ordenes_compra<br/>+ *_items)]
+    V -->|redirige al detalle| D[documento_detalle.html]
+    D -->|POST /estado| DB
+    D -->|GET /descargar| P[informes.generar_*_pdf<br/>pdf/documento.html → WeasyPrint]
+```
+
+- **Ítems.** Cada ítem lleva descripción (255 caracteres), cantidad mayor que 0, valor unitario sin puntos de miles e
+  IVA de 0, 5 o 19 %. Las filas vacías se ignoran.
+- **Totales.** El **servidor** recalcula subtotal, IVA y total con `Decimal`, redondeando a centavos. Lo que envíe el
+  navegador como total se ignora.
+- **Fechas.** La factura exige que el vencimiento no sea anterior a la emisión. La orden exige que la entrega no sea
+  anterior a la fecha de la orden.
+- **Estados.** Factura: pendiente / pagada / anulada. Una factura pendiente con el vencimiento ya pasado se muestra como
+  *Vencida*. Orden: pendiente / aprobada / recibida / anulada.
+- **Número.** Se forma con el id: `FAC-000001`, `OC-000001`.
+- **Aviso:** la facturación es un **control interno**. No reemplaza la factura electrónica de la DIAN, y así lo indican
+  el PDF y la página.
+
+### Talento humano: empleados, cuentas de cobro y nómina
+
+- **Empleados (admin).**
+  - Se puede crear y editar nombre, documento, cargo, profesión, correo y teléfono, con validación de formato.
+  - La `funcion` queda en 'funcionario'.
+  - No hay borrado, porque el empleado puede tener reportes, cuentas o nóminas asociadas. Para retirar a alguien se
+    desactiva su acceso.
+- **Cuentas de cobro.**
+  - El funcionario radica la suya con periodo, concepto y valor mayor que 0, y queda *Pendiente*.
+  - El administrador ve todas y las marca como aprobada, pagada o rechazada, con observaciones.
+  - El PDF dice "BIOMEGA S.A.S. debe a …" e incluye espacio para firmas.
+- **Nómina (admin liquida, funcionario consulta).** `liquidar_nomina` hace este cálculo:
+  - salario y auxilio de transporte proporcionales a los días (base 30);
+  - salud 4 % y pensión 4 % sobre (salario del periodo + horas extra);
+  - las bonificaciones se tratan como no salariales;
+  - todo se redondea al peso.
+
+  Solo puede haber una liquidación por empleado y mes: un segundo intento responde 409. Si las deducciones superan lo
+  devengado, la liquidación se rechaza. **No** incluye retención en la fuente, fondo de solidaridad ni prestaciones: si
+  aplican, van en "Otras deducciones".
+
+### Laboratorio: metrología
+
+```mermaid
+flowchart LR
+    U[Navegador] -->|POST cronograma_metrologia/guardar| C[(metrologia_cronograma)]
+    C -->|detalle → Registrar reporte<br/>?programacion=id| F[reporte_metrologia_form.html]
+    F -->|POST reportes_metrologia/guardar<br/>hasta 10 mediciones| V[calcular_mediciones<br/>error = medido − patrón<br/>cumple si abs error ≤ tolerancia]
+    V -->|INSERT reporte + UPDATE actividad = realizado<br/>misma transacción| DB[(metrologia_reportes)]
+    DB -->|GET /descargar| P[pdf/documento.html → WeasyPrint]
+```
+
+1. **Programar.** Se programa equipo, actividad (calibración, verificación o calificación), fecha, laboratorio y
+   responsable. Repetir el mismo equipo, actividad y fecha responde 409.
+2. **Cronograma.** Muestra el año agrupado por mes, con el resumen (programadas, pendientes, vencidas, realizadas) y un
+   filtro por estado. *Vencida* se calcula al mostrar: es una actividad pendiente con fecha pasada.
+3. **Reporte.** Si viene de una actividad programada, el equipo y el tipo se llenan solos. El servidor calcula el error
+   de cada medición y el resultado: **conforme** solo si todas cumplen; lo que mande el navegador como resultado se
+   ignora. Si el reporte se enlaza a una actividad, esta debe ser del mismo equipo, y queda *Realizada* en la misma
+   transacción.
+4. **Consulta de hojas de vida.** Abre la consulta de hojas de vida del módulo de mantenimiento.
+
 En todas las respuestas `app.py` agrega cabeceras de seguridad (CSP, `X-Frame-Options`, `nosniff`,
 HSTS en HTTPS y `Cache-Control: no-store` en páginas con datos). Si ocurre un error, el detalle queda en
 el log del servidor y el usuario solo ve un mensaje genérico (`error.html` o JSON `{"error": ...}`).
@@ -526,6 +726,7 @@ se convierte a PDF con WeasyPrint, en memoria y sin archivos temporales.
 | Reporte · los demás (1-16)       | `templates/pdf/protocolo_generico.html`, construida leyendo el propio formulario de `templates/forms/protocolos_mantenimiento/` |
 | Hoja de vida de equipo             | `templates/pdf/hoja_de_vida.html` (formato PM_003, una página)                                                                   |
 | Reporte general (de servicio)      | `templates/pdf/reporte_general.html` (réplica de `Formatos/REPORTE DE SERVICIO.pdf`, FT-GC-041)                                  |
+| Factura, orden de compra, cuenta de cobro, desprendible de nómina, reporte de metrología | `templates/pdf/documento.html` (plantilla genérica; los datos los arma cada `generar_*_pdf`) |
 
 Piezas compartidas de los reportes: `templates/pdf/base.html`, `_estilos.css`, `_encabezado.html` y los
 parciales `_cliente`, `_equipo`, `_repuestos`, `_cierre`, etc. Reportes y hoja de vida usan el mismo estilo
@@ -537,6 +738,9 @@ La **fecha de aprobación** del formato PM_003 se escribe en `FECHA_APROBACION_H
 
 Los datos fijos del reporte general (empresa, logo, código `FT-GC-041`, versión `003`, fecha de revisión y de
 aprobación) están en `FORMATO_REPORTE_GENERAL` (`informes/informes.py`). Si cambia el formato, se editan ahí.
+El nombre, el NIT y el logo de la empresa en los documentos administrativos están en `EMPRESA_DOCUMENTOS`
+(`informes/informes.py`). El NIT está vacío y conviene llenarlo.
+
 Su PDF usa franjas `#4f81bd`, como el formato original. Si el texto es largo, pasa a una segunda hoja y el
 encabezado se repite con "PÁGINA 2 DE 2".
 
@@ -576,6 +780,19 @@ inventario (listado con nombres y buscador, formulario, validaciones, serie repe
 (nombres sin tildes ni mayúsculas, encabezados en otro orden, errores por fila y archivos rechazados: texto
 renombrado, bomba ZIP, macros, bomba XML, más de 1000 filas, sin CSRF) y el cronograma (vistas de mes y año,
 parámetros inválidos, fechas generadas por la frecuencia, duplicados, validaciones y seguimiento).
+`tests/test_modulos.py` agrega 34 pruebas de roles y módulos nuevos:
+- **Login de funcionario:** sin distinguir mayúsculas; rechazado si el acceso está inactivo o la función no es
+  "funcionario".
+- **Permisos y menú:** 403 en las rutas de administrador; menú según el rol.
+- **Revocación:** la sesión cae al desactivar el acceso o cambiar la contraseña.
+- **Usuarios y contraseñas:** usuario reservado o repetido, contraseña corta.
+- **Facturación y órdenes:** totales calculados en el servidor, ítems inválidos, estados.
+- **Datos propios:** cuentas y nóminas ajenas responden 404; la cuenta de cobro queda a nombre del funcionario.
+- **Cálculos:** nómina (duplicado), mediciones de metrología y el enlace del reporte con el cronograma.
+- **Seguridad:** PDF con texto escapado, páginas sin scripts inline, POST sin CSRF rechazado.
+
+En total, 113 pruebas.
+
 **No** generan el PDF final (eso lo hace WeasyPrint): después de desplegar, descarga un PDF de cada
 documento para revisar el diseño.
 
@@ -597,7 +814,11 @@ arranca o la carga por Excel queda sin protección. La guía para migrar desde M
 con DBeaver y verificación) está en `database/postgres/LEEME.md`.
 
 Las tablas `cronograma_mantenimientos`, `reporte_general` y `areas_clinicas` (y la columna `personal.cargo`)
-también deben existir en la base de Render. El servidor calcula "hoy" y los
+también deben existir en la base de Render.
+
+**Roles y módulos nuevos:** antes de desplegar esta versión ejecuta `database/postgres/04_roles_y_modulos.sql`
+en la base de Render, con DBeaver o con `psql "$DATABASE_URL" -f …`. Sin ese script, el login de funcionarios
+responde "No se pudo verificar el acceso" y los módulos nuevos dan error; el administrador sigue entrando. El servidor calcula "hoy" y los
 vencidos con su propia hora, que en Render suele ser UTC: después de las 7 p. m. de Colombia ya usa el día siguiente.
 
 ## Seguridad: qué se hizo
@@ -616,10 +837,20 @@ vencidos con su propia hora, que en Render suele ser UTC: después de las 7 p. m
 - Plantillas con autoescape (el contenido del usuario no se interpreta como HTML ni en la web ni en el PDF).
 - WeasyPrint solo puede leer archivos de `static/` y datos `data:`: un dato malicioso no puede hacer que el servidor descargue URLs ni lea otros archivos.
 - Contenedor Docker sin privilegios de root.
+- **Roles.** Hay dos roles: admin y funcionario.
+  - Los permisos se aplican en el servidor (`@solo_admin` responde 403) y los datos ajenos responden 404.
+  - Las contraseñas del personal se guardan con hash scrypt.
+  - La sesión del funcionario se revalida en cada petición, y se revoca al desactivar el acceso o cambiar la
+    contraseña.
+  - Los cambios de acceso quedan en el log.
+- **Valores y totales.** Dinero, cantidades y mediciones se validan con expresiones regulares y `Decimal`, con
+  límites de tamaño. Totales, liquidaciones y resultados de metrología los calcula siempre el servidor.
 
 ## Pendiente
 
-- Completar los módulos pendientes del aplicativo.
+- Ejecutar `database/postgres/04_roles_y_modulos.sql` en la base de Render y habilitar el acceso del personal en *Roles y permisos*.
+- Llenar el NIT de la empresa en `EMPRESA_DOCUMENTOS` y revisar la liquidación de nómina con contabilidad (retención, solidaridad, prestaciones).
+- Completar los correos y documentos reales del personal (hay correos "pendiente confirmar" y dos documentos iguales).
 - Escribir la fecha de aprobación del formato PM_003 en `FECHA_APROBACION_HV`.
 - Agregar a los scripts de `database/postgres/` la estructura creada a mano (`riesgo`, `areas_clinicas`, `hojas_vida_equipos`, `hojas_vida_accesorios`, `v_hojas_vida`, `cronograma_mantenimientos`, `reporte_general`, `inventario.invima`, `personal.telefono`, `personal.cargo`, `unico_serie`).
 - Reporte general:

@@ -1,0 +1,54 @@
+{% extends 'layout/base.html' %}
+{% block title %}Nómina{% endblock %}
+{% block content %}
+<div class="dashboard-shell">
+    <section class="page-hero">
+        <div>
+            <span class="eyebrow">Talento humano</span>
+            <h2>{{ 'Nómina' if es_admin else 'Mis desprendibles de nómina' }}</h2>
+            <p>{% if es_admin %}Liquidaciones mensuales del personal y sus desprendibles en PDF.
+               {% else %}Consulta y descarga tus desprendibles de pago.{% endif %}</p>
+        </div>
+        {% if es_admin %}
+        <div class="hero-actions"><a class="btn btn-primary" href="{{ url_for('nueva_nomina') }}">Liquidar nómina</a></div>
+        {% endif %}
+    </section>
+
+    <div class="page-panel">
+        <div class="panel-head"><div><h3>Liquidaciones</h3><p>{{ nominas|length }} en total</p></div></div>
+        {% if nominas %}
+        <label class="sr-only" for="filtro_nomina">Filtrar nómina</label>
+        <input type="search" class="form-control mb-3" id="filtro_nomina" autocomplete="off"
+               data-filtro-tabla="tabla_nomina" placeholder="Filtrar por empleado o periodo">
+        <div class="table-responsive">
+            <table id="tabla_nomina">
+                <thead>
+                    <tr><th>Periodo</th>{% if es_admin %}<th>Empleado</th>{% endif %}<th>Días</th><th>Devengado</th>
+                        <th>Deducciones</th><th>Neto a pagar</th><th><span class="sr-only">Acciones</span></th></tr>
+                </thead>
+                <tbody>
+                    {% for n in nominas %}
+                    <tr>
+                        <td><strong>{{ n.periodo.strftime('%m/%Y') }}</strong></td>
+                        {% if es_admin %}<td>{{ n.empleado or '—' }}</td>{% endif %}
+                        <td>{{ n.dias_trabajados }}</td>
+                        <td>{{ n.total_devengado|pesos }}</td>
+                        <td>{{ n.total_deducciones|pesos }}</td>
+                        <td><strong>{{ n.neto_pagar|pesos }}</strong></td>
+                        <td class="acciones">
+                            <a class="btn btn-secondary btn-sm" href="{{ url_for('detalle_nomina', nomina_id=n.id) }}">Ver</a>
+                            <a class="btn btn-primary btn-sm" href="{{ url_for('descargar_nomina', nomina_id=n.id) }}">PDF</a>
+                        </td>
+                    </tr>
+                    {% endfor %}
+                </tbody>
+            </table>
+        </div>
+        <p class="vacio" id="tabla_nomina_vacio" hidden>Ninguna liquidación coincide con la búsqueda.</p>
+        {% else %}
+        <p class="vacio">Todavía no hay liquidaciones de nómina.</p>
+        {% endif %}
+    </div>
+</div>
+{% endblock %}
+{% block scripts %}<script src="{{ url_for('static', filename='js/buscador.js') }}"></script>{% endblock %}

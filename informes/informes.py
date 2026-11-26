@@ -596,6 +596,199 @@ def generar_reporte_general_pdf(reporte_id):
 
 
 # ----------------------------------------------------------------------------------------
+# Documentos administrativos: factura, orden de compra, cuenta de cobro, desprendible de
+# nómina y reporte de metrología. Todos usan la plantilla genérica ``pdf/documento.html``:
+# cada función solo arma el diccionario ``doc`` (bloques de datos, tabla, totales y firmas).
+# ----------------------------------------------------------------------------------------
+EMPRESA_DOCUMENTOS = {
+    'nombre': 'BIOMEGA S.A.S.',
+    'nit': '',                                # NIT de la empresa (aparece en los documentos si se llena)
+    'logo': 'images/pdf_logo.png',
+}
+_PREFIJOS = {'factura': 'FAC', 'orden': 'OC', 'cuenta': 'CC', 'nomina': 'NOM', 'metrologia': 'MET'}
+_NOMBRES_MES = ('', 'enero', 'febrero', 'marzo', 'abril', 'mayo', 'junio', 'julio', 'agosto',
+                'septiembre', 'octubre', 'noviembre', 'diciembre')
+
+
+def numero_documento(prefijo, documento_id):
+    """('FAC', 7) -> 'FAC-000007'. Acepta la clave ('factura') o el prefijo ('FAC')."""
+    return f"{_PREFIJOS.get(prefijo, prefijo)}-{int(documento_id):06d}"
+
+
+def pesos(valor):
+    """1234567.5 -> '$ 1.234.567,50' (formato colombiano); '' si no hay valor."""
+    if valor in (None, ''):
+        return ''
+    try:
+        texto = f"{float(valor):,.2f}" if not hasattr(valor, 'quantize') else f"{valor:,.2f}"
+    except (TypeError, ValueError):
+        return _texto(valor)
+    return '$ ' + texto.replace(',', '_').replace('.', ',').replace('_', '.')
+
+
+def _cantidad(valor):
+    """Decimal('2.00') -> '2'; Decimal('1.50') -> '1,5'."""
+    texto = f"{valor:f}".rstrip('0').rstrip('.') if hasattr(valor, 'quantize') else _texto(valor)
+    return texto.replace('.', ',')
+
+
+def _nombre_archivo(prefijo, documento_id, extra=''):
+    base = re.sub(r'[^A-Za-z0-9_.-]', '_', _texto(extra).strip())[:60].strip('._')
+    return f"{numero_documento(prefijo, documento_id)}{'_' + base if base else ''}.pdf"
+
+
+def _render_documento(doc):
+    return _html_a_pdf(render_template('pdf/documento.html', doc=doc, empresa=EMPRESA_DOCUMENTOS,
+                                       asset=pdf_asset))
+
+
+def _tabla_items(items):
+    filas = []
+    for item in items or []:
+        bruto = item['cantidad'] * item['valor_unitario']
+        filas.append([_cantidad(item['cantidad']), _texto(item['descripcion']), pesos(item['valor_unitario']),
+                      f"{_cantidad(item['iva_pct'])} %", pesos(bruto)])
+    return {'titulo': 'Detalle', 'filas': filas,
+            'columnas': [('Cant.', 'c', 9), ('Descripción', 'l', 45), ('Valor unitario', 'r', 17),
+                         ('IVA', 'c', 9), ('Valor', 'r', 20)]}
+
+
+def _totales_documento(d):
+    return [('Subtotal', pesos(d['subtotal']), False), ('IVA', pesos(d['iva']), False),
+            ('TOTAL', pesos(d['total']), True)]
+
+
+def generar_factura_pdf(factura):
+    """``factura``: db.obtener_factura(). Devuelve (bytes, nombre de archivo)."""
+    ubicacion = ' / '.join(t for t in (_texto(factura.get('departamento')), _texto(factura.get('ciudad'))) if t)
+    doc = {
+        'titulo': 'FACTURA DE VENTA', 'numero': numero_documento('factura', factura['id']),
+        'subtitulo': 'Documento de control interno · no reemplaza la factura electrónica DIAN',
+        'bloques': [
+            {'titulo': 'Cliente', 'pares': [('Razón social', factura.get('cliente')), ('NIT', factura.get('nit')),
+                                             ('Dirección', factura.get('direccion')), ('Ciudad', ubicacion),
+                                             ('Teléfono', factura.get('telefono')), ('Correo', factura.get('correo'))]},
+            {'titulo': 'Factura', 'pares': [('Fecha de emisión', _fecha(factura['fecha_emision'])),
+                                             ('Fecha de vencimiento', _fecha(factura['fecha_vencimiento'])),
+                                             ('Estado', _texto(factura['estado']).capitalize())]},
+        ],
+        'tabla': _tabla_items(factura.get('items')),
+        'totales': _totales_documento(factura),
+        'textos': [('Observaciones', factura.get('observaciones'))],
+        'firmas': ['Elaborado por', 'Recibido / aceptado por el cliente'],
+    }
+    return _render_documento(doc), _nombre_archivo('factura', factura['id'], factura.get('cliente'))
+
+
+def generar_orden_pdf(orden):
+    doc = {
+        'titulo': 'ORDEN DE COMPRA', 'numero': numero_documento('orden', orden['id']),
+        'bloques': [
+            {'titulo': 'Proveedor', 'pares': [('Proveedor', orden.get('proveedor')), ('NIT', orden.get('nit_proveedor')),
+                                               ('Contacto', orden.get('contacto'))]},
+            {'titulo': 'Orden', 'pares': [('Fecha', _fecha(orden['fecha'])),
+                                           ('Fecha de entrega', _fecha(orden.get('fecha_entrega'))),
+                                           ('Estado', _texto(orden['estado']).capitalize())]},
+        ],
+        'tabla': _tabla_items(orden.get('items')),
+        'totales': _totales_documento(orden),
+        'textos': [('Observaciones', orden.get('observaciones'))],
+        'firmas': ['Elaborado por', 'Aprobado por', 'Recibido por el proveedor'],
+    }
+    return _render_documento(doc), _nombre_archivo('orden', orden['id'], orden.get('proveedor'))
+
+
+def generar_cuenta_cobro_pdf(cuenta):
+    doc = {
+        'titulo': 'CUENTA DE COBRO', 'numero': numero_documento('cuenta', cuenta['id']),
+        'bloques': [
+            {'titulo': 'Debe a', 'pares': [('Nombre', cuenta.get('empleado')), ('Documento', cuenta.get('documento')),
+                                            ('Cargo / profesión', cuenta.get('cargo') or cuenta.get('profesion')),
+                                            ('Teléfono', cuenta.get('telefono')), ('Correo', cuenta.get('correo'))]},
+            {'titulo': 'Cuenta', 'pares': [('Fecha', _fecha(cuenta['fecha'])),
+                                            ('Periodo', f"{_fecha(cuenta['periodo_inicio'])} al {_fecha(cuenta['periodo_fin'])}"),
+                                            ('Estado', _texto(cuenta['estado']).capitalize())]},
+        ],
+        'textos': [('Concepto', cuenta.get('concepto')), ('Observaciones', cuenta.get('observaciones'))],
+        'totales': [('VALOR A PAGAR', pesos(cuenta['valor']), True)],
+        'leyenda': f"{EMPRESA_DOCUMENTOS['nombre']} debe a {_texto(cuenta.get('empleado'))} la suma indicada "
+                   "por el concepto descrito.",
+        'firmas': ['Firma de quien cobra', 'Aprobado por'],
+    }
+    return _render_documento(doc), _nombre_archivo('cuenta', cuenta['id'], cuenta.get('documento'))
+
+
+def generar_nomina_pdf(registro):
+    periodo = registro['periodo']
+    salario_periodo = registro['salario_base'] * registro['dias_trabajados'] / 30
+    auxilio_periodo = registro['auxilio_transporte'] * registro['dias_trabajados'] / 30
+    filas = [
+        ['Salario básico', f"{registro['dias_trabajados']} días", pesos(salario_periodo), ''],
+        ['Auxilio de transporte', '', pesos(auxilio_periodo), ''],
+        ['Horas extra y recargos', '', pesos(registro['horas_extra']), ''],
+        ['Bonificaciones', '', pesos(registro['bonificaciones']), ''],
+        ['Aporte a salud (4 %)', '', '', pesos(registro['salud'])],
+        ['Aporte a pensión (4 %)', '', '', pesos(registro['pension'])],
+        ['Otras deducciones', '', '', pesos(registro['otras_deducciones'])],
+    ]
+    doc = {
+        'titulo': 'DESPRENDIBLE DE NÓMINA', 'numero': numero_documento('nomina', registro['id']),
+        'bloques': [
+            {'titulo': 'Empleado', 'pares': [('Nombre', registro.get('empleado')), ('Documento', registro.get('documento')),
+                                              ('Cargo', registro.get('cargo'))]},
+            {'titulo': 'Periodo', 'pares': [('Mes', f"{_NOMBRES_MES[periodo.month].capitalize()} de {periodo.year}"),
+                                             ('Salario base mensual', pesos(registro['salario_base'])),
+                                             ('Días trabajados', registro['dias_trabajados'])]},
+        ],
+        'tabla': {'titulo': 'Liquidación', 'filas': filas,
+                  'columnas': [('Concepto', 'l', 40), ('Detalle', 'c', 16), ('Devengado', 'r', 22),
+                               ('Deducido', 'r', 22)]},
+        'totales': [('Total devengado', pesos(registro['total_devengado']), False),
+                    ('Total deducciones', pesos(registro['total_deducciones']), False),
+                    ('NETO A PAGAR', pesos(registro['neto_pagar']), True)],
+        'textos': [('Observaciones', registro.get('observaciones'))],
+        'firmas': ['Empleador', 'Recibí conforme'],
+    }
+    return _render_documento(doc), _nombre_archivo('nomina', registro['id'],
+                                                   f"{periodo:%Y-%m}_{_texto(registro.get('documento'))}")
+
+
+TIPOS_METROLOGIA = {'calibracion': 'Calibración', 'verificacion': 'Verificación', 'calificacion': 'Calificación'}
+
+
+def generar_metrologia_pdf(reporte):
+    unidad = _texto(reporte.get('unidad'))
+    mediciones = reporte.get('mediciones') if isinstance(reporte.get('mediciones'), list) else []
+    filas = [[m.get('n'), f"{m.get('patron')} {unidad}", f"{m.get('medido')} {unidad}",
+              f"{m.get('error')} {unidad}", f"± {m.get('tolerancia')} {unidad}",
+              'Cumple' if m.get('cumple') else 'No cumple'] for m in mediciones if isinstance(m, dict)]
+    conforme = reporte.get('resultado') == 'conforme'
+    doc = {
+        'titulo': f"REPORTE DE {TIPOS_METROLOGIA.get(reporte['tipo'], 'METROLOGÍA').upper()}",
+        'numero': numero_documento('metrologia', reporte['id']),
+        'bloques': [
+            {'titulo': 'Equipo', 'pares': [('Equipo', reporte.get('equipo')), ('Marca', reporte.get('marca')),
+                                            ('Serie', reporte.get('serie')), ('N° inventario', reporte.get('inventario')),
+                                            ('Cliente', reporte.get('cliente'))]},
+            {'titulo': 'Actividad', 'pares': [('Fecha', _fecha(reporte['fecha'])),
+                                               ('Magnitud', f"{_texto(reporte.get('magnitud'))} ({unidad})"),
+                                               ('Equipo patrón', reporte.get('patron')),
+                                               ('Certificado del patrón', reporte.get('certificado_patron')),
+                                               ('Próxima fecha', _fecha(reporte.get('proxima_fecha')))]},
+        ],
+        'tabla': {'titulo': 'Mediciones', 'filas': filas,
+                  'columnas': [('N°', 'c', 6), ('Valor patrón', 'c', 19), ('Valor medido', 'c', 19),
+                               ('Error', 'c', 18), ('Tolerancia', 'c', 18), ('Resultado', 'c', 20)]},
+        'totales': [('RESULTADO', 'CONFORME' if conforme else 'NO CONFORME', True)],
+        'textos': [('Observaciones', reporte.get('observaciones'))],
+        'leyenda': "Error = valor medido − valor patrón. Una medición cumple si |error| ≤ tolerancia; "
+                   "el equipo es conforme si todas las mediciones cumplen.",
+        'firmas': [f"Realizado por: {_texto(reporte.get('tecnico'))}", 'Revisado por'],
+    }
+    return _render_documento(doc), _nombre_archivo('metrologia', reporte['id'], reporte.get('inventario'))
+
+
+# ----------------------------------------------------------------------------------------
 # Conversión HTML -> PDF (compartida por reportes y hojas de vida)
 # ----------------------------------------------------------------------------------------
 def ruta_local_permitida(url):

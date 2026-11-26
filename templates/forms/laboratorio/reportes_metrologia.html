@@ -1,0 +1,60 @@
+{% extends 'layout/base.html' %}
+{% import '_macros.html' as m %}
+{% block title %}Reportes de metrología{% endblock %}
+{% block content %}
+<div class="dashboard-shell">
+    <section class="page-hero">
+        <div>
+            <span class="eyebrow">Laboratorio</span>
+            <h2>Reportes de metrología</h2>
+            <p>Resultados de calibraciones y verificaciones, con su PDF.</p>
+        </div>
+        <div class="hero-actions">
+            <a class="btn btn-primary" href="{{ url_for('nuevo_reporte_metrologia') }}">Nuevo reporte</a>
+            <a class="btn btn-secondary" href="{{ url_for('cronograma_metrologia') }}">Cronograma de metrología</a>
+        </div>
+    </section>
+
+    <div class="page-panel">
+        {% if guardado %}
+        <div class="alert alert-ok" role="status">
+            Reporte {{ numero_documento('metrologia', guardado) }} guardado.
+            <a href="{{ url_for('descargar_reporte_metrologia', reporte_id=guardado) }}">Descargar PDF</a>
+        </div>
+        {% endif %}
+        <div class="panel-head"><div><h3>Reportes registrados</h3><p>{{ reportes|length }} en total</p></div></div>
+        {% if reportes %}
+        <label class="sr-only" for="filtro_metrologia">Filtrar reportes</label>
+        <input type="search" class="form-control mb-3" id="filtro_metrologia" autocomplete="off"
+               data-filtro-tabla="tabla_metrologia" placeholder="Filtrar por número, equipo, serie, cliente o resultado">
+        <div class="table-responsive">
+            <table id="tabla_metrologia">
+                <thead><tr><th>N°</th><th>Fecha</th><th>Equipo</th><th>Serie</th><th>Cliente</th><th>Actividad</th>
+                    <th>Magnitud</th><th>Resultado</th><th>Técnico</th><th><span class="sr-only">Acciones</span></th></tr></thead>
+                <tbody>
+                    {% for r in reportes %}
+                    <tr>
+                        <td><strong>{{ numero_documento('metrologia', r.id) }}</strong></td>
+                        <td>{{ r.fecha|fecha }}</td>
+                        <td>{{ r.equipo or '—' }}</td>
+                        <td>{{ r.serie }}</td>
+                        <td>{{ r.cliente or '—' }}</td>
+                        <td>{{ tipos.get(r.tipo, r.tipo) }}</td>
+                        <td>{{ r.magnitud }} ({{ r.unidad }})</td>
+                        <td>{% if r.resultado == 'conforme' %}<span class="crono-chip crono-realizado">Conforme</span>
+                            {% else %}<span class="crono-chip crono-vencido">No conforme</span>{% endif %}</td>
+                        <td>{{ r.tecnico or '—' }}</td>
+                        <td class="acciones"><a class="btn btn-primary btn-sm" href="{{ url_for('descargar_reporte_metrologia', reporte_id=r.id) }}">PDF</a></td>
+                    </tr>
+                    {% endfor %}
+                </tbody>
+            </table>
+        </div>
+        <p class="vacio" id="tabla_metrologia_vacio" hidden>Ningún reporte coincide con la búsqueda.</p>
+        {% else %}
+        <p class="vacio">Todavía no hay reportes de metrología.</p>
+        {% endif %}
+    </div>
+</div>
+{% endblock %}
+{% block scripts %}<script src="{{ url_for('static', filename='js/buscador.js') }}"></script>{% endblock %}

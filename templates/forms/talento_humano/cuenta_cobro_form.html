@@ -1,0 +1,63 @@
+{% extends 'layout/base.html' %}
+{% import '_macros.html' as m %}
+{% block title %}Nueva cuenta de cobro{% endblock %}
+{% block content %}
+<div class="dashboard-shell">
+    <section class="page-hero">
+        <div>
+            <span class="eyebrow">Talento humano</span>
+            <h2>Nueva cuenta de cobro</h2>
+            <p>{% if es_admin %}Radica una cuenta de cobro a nombre de un empleado.
+               {% else %}La cuenta queda a tu nombre ({{ nombre_usuario }}) en estado «Pendiente».{% endif %}</p>
+        </div>
+        <div class="hero-actions"><a class="btn btn-secondary" href="{{ url_for('cuentas_cobro') }}">Volver</a></div>
+    </section>
+
+    <div class="page-panel">
+        {{ m.avisos(error) }}
+        <form action="{{ url_for('guardar_cuenta_cobro') }}" method="POST" autocomplete="off">
+            <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+            <div class="hv-grid">
+                {% if es_admin %}
+                <div class="mb-3">
+                    <label class="form-label" for="empleado">Empleado</label>
+                    <select class="form-control" id="empleado" name="empleado" required>
+                        <option value="">-- Seleccione --</option>
+                        {{ m.opciones(empleados, v.get('empleado')) }}
+                    </select>
+                </div>
+                {% endif %}
+                <div class="mb-3">
+                    <label class="form-label" for="fecha">Fecha de la cuenta</label>
+                    <input type="date" class="form-control" id="fecha" name="fecha" value="{{ v.get('fecha', hoy) }}" required>
+                </div>
+                <div class="mb-3">
+                    <label class="form-label" for="periodo_inicio">Periodo: desde</label>
+                    <input type="date" class="form-control" id="periodo_inicio" name="periodo_inicio" value="{{ v.get('periodo_inicio', '') }}" required>
+                </div>
+                <div class="mb-3">
+                    <label class="form-label" for="periodo_fin">Periodo: hasta</label>
+                    <input type="date" class="form-control" id="periodo_fin" name="periodo_fin" value="{{ v.get('periodo_fin', '') }}" required>
+                </div>
+                <div class="mb-3">
+                    <label class="form-label" for="valor">Valor a cobrar (sin puntos de miles)</label>
+                    <input type="number" class="form-control" id="valor" name="valor" min="0.01" step="0.01" value="{{ v.get('valor', '') }}" required>
+                </div>
+            </div>
+            <div class="mb-3">
+                <label class="form-label" for="concepto">Concepto</label>
+                <textarea class="form-control" id="concepto" name="concepto" rows="3" maxlength="500" required
+                          placeholder="Ej.: Prestación de servicios de mantenimiento biomédico en noviembre de 2026">{{ v.get('concepto', '') }}</textarea>
+            </div>
+            <div class="mb-3">
+                <label class="form-label" for="observaciones">Observaciones</label>
+                <textarea class="form-control" id="observaciones" name="observaciones" rows="2" maxlength="1000">{{ v.get('observaciones', '') }}</textarea>
+            </div>
+            <div class="hv-acciones">
+                <button type="submit" class="btn btn-primary">Radicar cuenta de cobro</button>
+                <a class="btn btn-secondary" href="{{ url_for('cuentas_cobro') }}">Cancelar</a>
+            </div>
+        </form>
+    </div>
+</div>
+{% endblock %}

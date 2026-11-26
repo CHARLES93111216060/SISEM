@@ -9,10 +9,10 @@
         </div>
     </div>
     <div class="header-right">
-        <div class="user-pill">
-            <span class="user-label">Bienvenido</span>
-            <strong>{{ session['username'] }}</strong>
-        </div>
+        <a class="user-pill" href="{{ url_for('mi_cuenta') }}" title="Mi cuenta">
+            <span class="user-label">{{ rol_nombre or 'Bienvenido' }}</span>
+            <strong>{{ nombre_usuario }}</strong>
+        </a>
         <form action="{{ url_for('logout') }}" method="post" class="logout-form">
             <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
             <button type="submit" class="log-out">Cerrar sesión</button>

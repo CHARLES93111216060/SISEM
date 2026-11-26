@@ -1,0 +1,70 @@
+{% extends 'layout/base.html' %}
+{% import '_macros.html' as m %}
+{% block title %}Cronograma de metrología {{ anio }}{% endblock %}
+{% block content %}
+<div class="dashboard-shell">
+    <section class="page-hero">
+        <div>
+            <span class="eyebrow">Laboratorio</span>
+            <h2>Cronograma de metrología {{ anio }}</h2>
+            <p>Calibraciones, verificaciones y calificaciones programadas por equipo.</p>
+        </div>
+        <div class="hero-actions">
+            <a class="btn btn-primary" href="{{ url_for('programar_metrologia') }}">Programar actividad</a>
+            <a class="btn btn-secondary" href="{{ url_for('reportes_metrologia') }}">Reportes de metrología</a>
+        </div>
+    </section>
+
+    <div class="dashboard-cards">
+        <div class="card"><h3>Programadas</h3><p>{{ resumen.total }}</p></div>
+        <div class="card"><h3>Pendientes</h3><p>{{ resumen.pendientes }}</p></div>
+        <div class="card"><h3>Vencidas</h3><p>{{ resumen.vencidos }}</p></div>
+        <div class="card"><h3>Realizadas</h3><p>{{ resumen.realizados }}</p></div>
+    </div>
+
+    <div class="page-panel">
+        {{ m.avisos(ok='Actividad programada.' if aviso == 'creado') }}
+        <form class="crono-filtros" method="get" action="{{ url_for('cronograma_metrologia') }}">
+            <label class="sr-only" for="anio">Año</label>
+            <input type="number" class="form-control" id="anio" name="anio" min="2000" max="2100" value="{{ anio }}">
+            <label class="sr-only" for="estado">Estado</label>
+            <select class="form-control" id="estado" name="estado">
+                <option value="">Todos los estados</option>
+                {{ m.opciones_dict(estados, estado) }}
+            </select>
+            <div class="crono-filtros-acciones">
+                <button type="submit" class="btn btn-primary">Filtrar</button>
+                <a class="btn btn-secondary" href="{{ url_for('cronograma_metrologia', anio=anio - 1) }}">← {{ anio - 1 }}</a>
+                <a class="btn btn-secondary" href="{{ url_for('cronograma_metrologia', anio=anio + 1) }}">{{ anio + 1 }} →</a>
+            </div>
+        </form>
+
+        {% for mes, actividades in meses %}
+        <h3 class="hv-titulo">{{ nombres_mes[mes] }}</h3>
+        <div class="table-responsive">
+            <table>
+                <thead><tr><th>Fecha</th><th>Equipo</th><th>Serie / inventario</th><th>Cliente</th><th>Actividad</th>
+                    <th>Laboratorio</th><th>Responsable</th><th>Estado</th><th><span class="sr-only">Acciones</span></th></tr></thead>
+                <tbody>
+                    {% for a in actividades %}
+                    <tr>
+                        <td>{{ a.fecha_programada|fecha }}</td>
+                        <td>{{ a.equipo or '—' }}</td>
+                        <td>{{ a.serie }}{% if a.inventario %} · {{ a.inventario }}{% endif %}</td>
+                        <td>{{ a.cliente or '—' }}</td>
+                        <td>{{ tipos.get(a.tipo, a.tipo) }}</td>
+                        <td>{{ a.proveedor or '—' }}</td>
+                        <td>{{ a.responsable or '—' }}</td>
+                        <td>{{ m.estado(estados, a.estado, a.fecha_programada) }}</td>
+                        <td class="acciones"><a class="btn btn-secondary btn-sm" href="{{ url_for('detalle_metrologia', metrologia_id=a.id) }}">Ver</a></td>
+                    </tr>
+                    {% endfor %}
+                </tbody>
+            </table>
+        </div>
+        {% else %}
+        <p class="vacio">No hay actividades de metrología programadas en {{ anio }}{% if estado %} con ese estado{% endif %}.</p>
+        {% endfor %}
+    </div>
+</div>
+{% endblock %}

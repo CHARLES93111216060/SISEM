@@ -1,0 +1,42 @@
+{% extends 'layout/base.html' %}
+{% import '_macros.html' as m %}
+{% block title %}Nómina {{ n.periodo.strftime('%m/%Y') }}{% endblock %}
+{% block content %}
+<div class="dashboard-shell">
+    <section class="page-hero">
+        <div>
+            <span class="eyebrow">Nómina</span>
+            <h2>{{ n.empleado }} · {{ n.periodo.strftime('%m/%Y') }}</h2>
+            <p>{{ numero_documento('nomina', n.id) }} · {{ n.cargo }}</p>
+        </div>
+        <div class="hero-actions">
+            <a class="btn btn-primary" href="{{ url_for('descargar_nomina', nomina_id=n.id) }}">Descargar desprendible</a>
+            <a class="btn btn-secondary" href="{{ url_for('nomina') }}">Volver</a>
+        </div>
+    </section>
+
+    <div class="page-panel">
+        {{ m.avisos(ok='Nómina liquidada y guardada.' if aviso == 'creado') }}
+        <div class="table-responsive">
+            <table>
+                <thead><tr><th>Concepto</th><th>Devengado</th><th>Deducido</th></tr></thead>
+                <tbody>
+                    <tr><td>Salario básico ({{ n.dias_trabajados }} días, base {{ n.salario_base|pesos }})</td>
+                        <td>{{ (n.salario_base * n.dias_trabajados / 30)|pesos }}</td><td></td></tr>
+                    <tr><td>Auxilio de transporte</td><td>{{ (n.auxilio_transporte * n.dias_trabajados / 30)|pesos }}</td><td></td></tr>
+                    <tr><td>Horas extra y recargos</td><td>{{ n.horas_extra|pesos }}</td><td></td></tr>
+                    <tr><td>Bonificaciones</td><td>{{ n.bonificaciones|pesos }}</td><td></td></tr>
+                    <tr><td>Aporte a salud</td><td></td><td>{{ n.salud|pesos }}</td></tr>
+                    <tr><td>Aporte a pensión</td><td></td><td>{{ n.pension|pesos }}</td></tr>
+                    <tr><td>Otras deducciones</td><td></td><td>{{ n.otras_deducciones|pesos }}</td></tr>
+                </tbody>
+                <tfoot>
+                    <tr><td class="lbl-total">Totales</td><td>{{ n.total_devengado|pesos }}</td><td>{{ n.total_deducciones|pesos }}</td></tr>
+                    <tr><td class="lbl-total"><strong>Neto a pagar</strong></td><td colspan="2"><strong>{{ n.neto_pagar|pesos }}</strong></td></tr>
+                </tfoot>
+            </table>
+        </div>
+        {% if n.observaciones %}<h3 class="hv-titulo">Observaciones</h3><p class="texto-largo">{{ n.observaciones }}</p>{% endif %}
+    </div>
+</div>
+{% endblock %}

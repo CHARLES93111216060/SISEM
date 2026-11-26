@@ -1,0 +1,53 @@
+{% extends 'layout/base.html' %}
+{% import '_macros.html' as m %}
+{% block title %}Acceso de {{ e.nombre }}{% endblock %}
+{% block content %}
+<div class="dashboard-shell">
+    <section class="page-hero">
+        <div>
+            <span class="eyebrow">Roles y permisos</span>
+            <h2>Acceso de {{ e.nombre }}</h2>
+            <p>Rol: <strong>Funcionario</strong> · {{ e.cargo }}</p>
+        </div>
+        <div class="hero-actions"><a class="btn btn-secondary" href="{{ url_for('roles') }}">Volver</a></div>
+    </section>
+
+    <div class="page-panel">
+        {{ m.avisos(error) }}
+        {# autocomplete="off"/"new-password": el navegador no debe rellenar la clave del administrador aquí #}
+        <form action="{{ url_for('guardar_acceso', empleado_id=e.id) }}" method="POST" autocomplete="off">
+            <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+            <div class="hv-grid">
+                <div class="mb-3">
+                    <label class="form-label" for="usuario">Usuario</label>
+                    <input type="text" class="form-control" id="usuario" name="usuario" maxlength="60" autocomplete="off"
+                           value="{{ v.get('usuario') or e.usuario or e.documento or '' }}" required>
+                    <small class="ayuda">Letras, números, punto, guion o guion bajo (3 a 60). No distingue mayúsculas.</small>
+                </div>
+                <div class="mb-3">
+                    <label class="form-label" for="acceso_activo">Estado del acceso</label>
+                    <select class="form-control" id="acceso_activo" name="acceso_activo">
+                        <option value="si"{{ ' selected' if e.acceso_activo }}>Activo: puede iniciar sesión</option>
+                        <option value="no"{{ ' selected' if not e.acceso_activo }}>Inactivo: no puede iniciar sesión</option>
+                    </select>
+                </div>
+                <div class="mb-3">
+                    <label class="form-label" for="clave">{{ 'Nueva contraseña' if e.tiene_clave else 'Contraseña' }}</label>
+                    <input type="password" class="form-control" id="clave" name="clave" minlength="{{ clave_min }}" maxlength="128"
+                           autocomplete="new-password" {{ 'required' if not e.tiene_clave }}>
+                    <small class="ayuda">{% if e.tiene_clave %}Déjala vacía para conservar la actual. {% endif %}Mínimo {{ clave_min }} caracteres.</small>
+                </div>
+                <div class="mb-3">
+                    <label class="form-label" for="confirmar">Confirmar contraseña</label>
+                    <input type="password" class="form-control" id="confirmar" name="confirmar" maxlength="128" autocomplete="new-password">
+                </div>
+            </div>
+            <p class="ayuda">Entrega la contraseña a la persona por un canal privado; ella puede cambiarla luego en «Mi cuenta».</p>
+            <div class="hv-acciones">
+                <button type="submit" class="btn btn-primary">Guardar acceso</button>
+                <a class="btn btn-secondary" href="{{ url_for('roles') }}">Cancelar</a>
+            </div>
+        </form>
+    </div>
+</div>
+{% endblock %}

@@ -1,0 +1,120 @@
+{% extends 'layout/base.html' %}
+{% import '_macros.html' as m %}
+{# Formulario compartido de factura y orden de compra (doc.tipo = 'factura' | 'orden').
+   Los totales los calcula SIEMPRE el servidor; aquí solo se escriben cantidades y valores. #}
+{% block title %}Nueva {{ doc.titulo|lower }}{% endblock %}
+{% block content %}
+<div class="dashboard-shell">
+    <section class="page-hero">
+        <div>
+            <span class="eyebrow">Módulo comercial</span>
+            <h2>Nueva {{ doc.titulo|lower }}</h2>
+            <p>Escribe los valores sin puntos de miles (por ejemplo 150000 o 150000.50).</p>
+        </div>
+        <div class="hero-actions">
+            <a class="btn btn-secondary" href="{{ url_for(doc.listado) }}">Volver</a>
+        </div>
+    </section>
+
+    <div class="page-panel">
+        {{ m.avisos(error) }}
+        <form action="{{ url_for(doc.guardar) }}" method="POST" autocomplete="off">
+            <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+
+            {% if doc.tipo == 'factura' %}
+            <h3 class="hv-titulo">Cliente y fechas</h3>
+            <div class="hv-grid hv-grid-3">
+                <div class="mb-3">
+                    <label class="form-label" for="cliente">Cliente</label>
+                    <select class="form-control" id="cliente" name="cliente" required>
+                        <option value="">-- Seleccione --</option>
+                        {{ m.opciones(clientes, v.get('cliente')) }}
+                    </select>
+                </div>
+                <div class="mb-3">
+                    <label class="form-label" for="fecha_emision">Fecha de emisión</label>
+                    <input type="date" class="form-control" id="fecha_emision" name="fecha_emision"
+                           value="{{ v.get('fecha_emision', hoy) }}" required>
+                </div>
+                <div class="mb-3">
+                    <label class="form-label" for="fecha_vencimiento">Fecha de vencimiento</label>
+                    <input type="date" class="form-control" id="fecha_vencimiento" name="fecha_vencimiento"
+                           value="{{ v.get('fecha_vencimiento', '') }}" required>
+                </div>
+            </div>
+            {% else %}
+            <h3 class="hv-titulo">Proveedor y fechas</h3>
+            <div class="hv-grid">
+                <div class="mb-3">
+                    <label class="form-label" for="proveedor">Proveedor</label>
+                    <input type="text" class="form-control" id="proveedor" name="proveedor" maxlength="150"
+                           value="{{ v.get('proveedor', '') }}" required>
+                </div>
+                <div class="mb-3">
+                    <label class="form-label" for="nit_proveedor">NIT del proveedor</label>
+                    <input type="text" class="form-control" id="nit_proveedor" name="nit_proveedor" maxlength="30"
+                           value="{{ v.get('nit_proveedor', '') }}">
+                </div>
+                <div class="mb-3">
+                    <label class="form-label" for="contacto">Contacto (nombre, teléfono o correo)</label>
+                    <input type="text" class="form-control" id="contacto" name="contacto" maxlength="150"
+                           value="{{ v.get('contacto', '') }}">
+                </div>
+                <div class="mb-3">
+                    <label class="form-label" for="fecha">Fecha de la orden</label>
+                    <input type="date" class="form-control" id="fecha" name="fecha" value="{{ v.get('fecha', hoy) }}" required>
+                </div>
+                <div class="mb-3">
+                    <label class="form-label" for="fecha_entrega">Fecha de entrega esperada</label>
+                    <input type="date" class="form-control" id="fecha_entrega" name="fecha_entrega"
+                           value="{{ v.get('fecha_entrega', '') }}">
+                </div>
+            </div>
+            {% endif %}
+
+            <h3 class="hv-titulo">Ítems</h3>
+            <div class="table-responsive">
+                <table class="hv-accesorios">
+                    <thead>
+                        <tr><th>Descripción</th><th>Cantidad</th><th>Valor unitario</th><th>IVA</th></tr>
+                    </thead>
+                    <tbody>
+                        {% set descripciones = v.getlist('item_descripcion') if v.getlist else [] %}
+                        {% set cantidades = v.getlist('item_cantidad') if v.getlist else [] %}
+                        {% set valores = v.getlist('item_valor') if v.getlist else [] %}
+                        {% set ivas_elegidos = v.getlist('item_iva') if v.getlist else [] %}
+                        {% for n in range(filas) %}
+                        <tr>
+                            <td><input type="text" class="form-control" name="item_descripcion" maxlength="255"
+                                       aria-label="Descripción del ítem {{ n + 1 }}" {{ 'required' if n == 0 }}
+                                       value="{{ descripciones[n] if n < descripciones|length else '' }}"></td>
+                            <td><input type="number" class="form-control" name="item_cantidad" min="0.01" step="0.01"
+                                       aria-label="Cantidad del ítem {{ n + 1 }}"
+                                       value="{{ cantidades[n] if n < cantidades|length else '' }}"></td>
+                            <td><input type="number" class="form-control" name="item_valor" min="0" step="0.01"
+                                       aria-label="Valor unitario del ítem {{ n + 1 }}"
+                                       value="{{ valores[n] if n < valores|length else '' }}"></td>
+                            <td><select class="form-control" name="item_iva" aria-label="IVA del ítem {{ n + 1 }}">
+                                {% set elegido = ivas_elegidos[n] if n < ivas_elegidos|length else '0' %}
+                                {% for iva in ivas %}<option value="{{ iva }}"{{ ' selected' if elegido == iva }}>{{ iva }} %</option>{% endfor %}
+                            </select></td>
+                        </tr>
+                        {% endfor %}
+                    </tbody>
+                </table>
+            </div>
+
+            <div class="mb-3 mt-4">
+                <label class="form-label" for="observaciones">Observaciones</label>
+                <textarea class="form-control" id="observaciones" name="observaciones" rows="3"
+                          maxlength="2000">{{ v.get('observaciones', '') }}</textarea>
+            </div>
+
+            <div class="hv-acciones">
+                <button type="submit" class="btn btn-primary">Guardar {{ doc.titulo|lower }}</button>
+                <a class="btn btn-secondary" href="{{ url_for(doc.listado) }}">Cancelar</a>
+            </div>
+        </form>
+    </div>
+</div>
+{% endblock %}

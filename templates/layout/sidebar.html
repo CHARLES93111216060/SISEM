@@ -12,10 +12,12 @@
         </button>
     </div>
 
+    {# El menú muestra solo lo que el rol puede usar (es_admin viene del context_processor de app.py).
+       Ocultar un enlace NO es la protección: cada ruta valida el rol en el servidor. #}
     <nav class="sidebar-nav">
         <ul class="nav-list">
             <li class="nav-item">
-                <a href="/dashboard" class="nav-link">
+                <a href="{{ url_for('dashboard') }}" class="nav-link">
                     <img src="{{ url_for('static', filename='images/home.svg') }}" alt="Home" class="nav-icon">
                     <span>Inicio</span>
                 </a>
@@ -28,15 +30,16 @@
                     <span class="submenu-arrow">▾</span>
                 </button>
                 <ul class="submenu">
-                    <li><a href="/mantenimiento/planificado">Cronograma de mantenimiento</a></li>
-                    <li><a href="/mantenimiento/reportes">Generar reporte de mantenimiento</a></li>
-                    <li><a href="/mantenimiento/historial">Historial de mantenimiento</a></li>
-                    <li><a href="/mantenimiento/hojas_vida_equipos">Hojas de vida de los equipos</a></li>
+                    <li><a href="{{ url_for('cronograma') }}">Cronograma de mantenimiento</a></li>
+                    <li><a href="{{ url_for('mantenimiento_correctivo') }}">Generar reporte de mantenimiento</a></li>
+                    <li><a href="{{ url_for('historial') }}">Historial de mantenimiento</a></li>
+                    <li><a href="{{ url_for('consultar_reportes_generales') }}">Reportes generales</a></li>
+                    <li><a href="{{ url_for('hojas_vida_equipos') }}">Hojas de vida de los equipos</a></li>
                 </ul>
             </li>
 
             <li class="nav-item">
-                <a href="/clientes" class="nav-link">
+                <a href="{{ url_for('ver_clientes') }}" class="nav-link">
                     <img src="{{ url_for('static', filename='images/customer.svg') }}" alt="Clientes" class="nav-icon">
                     <span>Clientes</span>
                 </a>
@@ -49,9 +52,11 @@
                     <span class="submenu-arrow">▾</span>
                 </button>
                 <ul class="submenu">
-                    <li><a href="/comercial/clientes">Facturación</a></li>
-                    <li><a href="/comercial/ordenes">Órdenes de compra</a></li>
-                    <li><a href="/comercial/inventario">Inventario</a></li>
+                    {% if es_admin %}
+                    <li><a href="{{ url_for('facturacion') }}">Facturación</a></li>
+                    <li><a href="{{ url_for('ordenes') }}">Órdenes de compra</a></li>
+                    {% endif %}
+                    <li><a href="{{ url_for('inventario') }}">Inventario</a></li>
                 </ul>
             </li>
 
@@ -62,11 +67,16 @@
                     <span class="submenu-arrow">▾</span>
                 </button>
                 <ul class="submenu">
-                    <li><a href="/talento_humano/empleados">Empleados</a></li>
-                    <li><a href="/talento_humano/roles">Roles y permisos</a></li>
-                    <li><a href="/talento_humano/asistencia">Cuentas de cobro</a></li>
-                    <li><a href="/talento_humano/nomina">Nómina</a></li>
-                    <li><a href="/talento_humano/reportes">Modificar lista de empleados</a></li>
+                    {% if es_admin %}
+                    <li><a href="{{ url_for('empleados') }}">Empleados</a></li>
+                    <li><a href="{{ url_for('roles') }}">Roles y permisos</a></li>
+                    <li><a href="{{ url_for('cuentas_cobro') }}">Cuentas de cobro</a></li>
+                    <li><a href="{{ url_for('nomina') }}">Nómina</a></li>
+                    <li><a href="{{ url_for('nuevo_empleado') }}">Modificar lista de empleados</a></li>
+                    {% else %}
+                    <li><a href="{{ url_for('cuentas_cobro') }}">Mis cuentas de cobro</a></li>
+                    <li><a href="{{ url_for('nomina') }}">Mis desprendibles de nómina</a></li>
+                    {% endif %}
                 </ul>
             </li>
 
@@ -77,9 +87,9 @@
                     <span class="submenu-arrow">▾</span>
                 </button>
                 <ul class="submenu">
-                    <li><a href="/laboratorio/cronograma_metrologia">Cronograma de metrología</a></li>
-                    <li><a href="/laboratorio/reportes_metrologia">Generar reportes de metrología</a></li>
-                    <li><a href="/laboratorio/hojas_de_vida">Consulta de hojas de vida</a></li>
+                    <li><a href="{{ url_for('cronograma_metrologia') }}">Cronograma de metrología</a></li>
+                    <li><a href="{{ url_for('reportes_metrologia') }}">Generar reportes de metrología</a></li>
+                    <li><a href="{{ url_for('consultar_hv') }}">Consulta de hojas de vida</a></li>
                 </ul>
             </li>
         </ul>

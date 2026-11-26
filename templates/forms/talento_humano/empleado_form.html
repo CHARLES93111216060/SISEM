@@ -1,0 +1,53 @@
+{% extends 'layout/base.html' %}
+{% import '_macros.html' as m %}
+{% block title %}{{ 'Editar' if empleado_id else 'Nuevo' }} empleado{% endblock %}
+{% block content %}
+<div class="dashboard-shell">
+    <section class="page-hero">
+        <div>
+            <span class="eyebrow">Talento humano</span>
+            <h2>{{ 'Editar empleado' if empleado_id else 'Nuevo empleado' }}</h2>
+            <p>Un empleado nuevo entra con el rol de funcionario y <strong>sin acceso</strong> al aplicativo: el acceso se habilita en Roles y permisos.</p>
+        </div>
+        <div class="hero-actions"><a class="btn btn-secondary" href="{{ url_for('empleados') }}">Volver</a></div>
+    </section>
+
+    <div class="page-panel">
+        {{ m.avisos(error) }}
+        <form action="{{ url_for('guardar_empleado') }}" method="POST" autocomplete="off">
+            <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+            {% if empleado_id %}<input type="hidden" name="id" value="{{ empleado_id }}">{% endif %}
+            <div class="hv-grid">
+                <div class="mb-3">
+                    <label class="form-label" for="nombre">Nombre completo</label>
+                    <input type="text" class="form-control" id="nombre" name="nombre" maxlength="120" value="{{ v.get('nombre') or '' }}" required>
+                </div>
+                <div class="mb-3">
+                    <label class="form-label" for="documento">Documento de identidad</label>
+                    <input type="text" class="form-control" id="documento" name="documento" maxlength="20" value="{{ v.get('documento') or '' }}" required>
+                </div>
+                <div class="mb-3">
+                    <label class="form-label" for="cargo">Cargo</label>
+                    <input type="text" class="form-control" id="cargo" name="cargo" maxlength="80" value="{{ v.get('cargo') or '' }}" required>
+                </div>
+                <div class="mb-3">
+                    <label class="form-label" for="profesion">Profesión</label>
+                    <input type="text" class="form-control" id="profesion" name="profesion" maxlength="80" value="{{ v.get('profesion') or '' }}" required>
+                </div>
+                <div class="mb-3">
+                    <label class="form-label" for="correo">Correo</label>
+                    <input type="email" class="form-control" id="correo" name="correo" maxlength="120" value="{{ v.get('correo') or '' }}">
+                </div>
+                <div class="mb-3">
+                    <label class="form-label" for="telefono">Teléfono</label>
+                    <input type="tel" class="form-control" id="telefono" name="telefono" maxlength="20" value="{{ v.get('telefono') or '' }}">
+                </div>
+            </div>
+            <div class="hv-acciones">
+                <button type="submit" class="btn btn-primary">Guardar empleado</button>
+                <a class="btn btn-secondary" href="{{ url_for('empleados') }}">Cancelar</a>
+            </div>
+        </form>
+    </div>
+</div>
+{% endblock %}

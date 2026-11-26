@@ -1,0 +1,74 @@
+{% extends 'layout/base.html' %}
+{% import '_macros.html' as m %}
+{# Detalle compartido de factura y orden de compra: datos, ítems, totales y cambio de estado #}
+{% block title %}{{ doc.titulo }} {{ numero }}{% endblock %}
+{% block content %}
+<div class="dashboard-shell">
+    <section class="page-hero">
+        <div>
+            <span class="eyebrow">{{ doc.plural }}</span>
+            <h2>{{ doc.titulo }} {{ numero }}</h2>
+            <p>{{ m.estado(doc.estados, d.estado, d.fecha_vencimiento if doc.tipo == 'factura' else none) }}</p>
+        </div>
+        <div class="hero-actions">
+            <a class="btn btn-primary" href="{{ url_for(doc.pdf, **{doc.id: d.id}) }}">Descargar PDF</a>
+            <a class="btn btn-secondary" href="{{ url_for(doc.listado) }}">Volver</a>
+        </div>
+    </section>
+
+    <div class="page-panel">
+        {{ m.avisos(ok={'creado': doc.titulo ~ ' guardada correctamente.', 'estado': 'Estado actualizado.'}.get(aviso)) }}
+
+        <h3 class="hv-titulo">Datos</h3>
+        <div class="hv-grid">
+            {% if doc.tipo == 'factura' %}
+            <p><strong>Cliente:</strong> {{ d.cliente or '—' }}</p>
+            <p><strong>NIT:</strong> {{ d.nit or '—' }}</p>
+            <p><strong>Emisión:</strong> {{ d.fecha_emision|fecha }}</p>
+            <p><strong>Vencimiento:</strong> {{ d.fecha_vencimiento|fecha }}</p>
+            {% else %}
+            <p><strong>Proveedor:</strong> {{ d.proveedor }}</p>
+            <p><strong>NIT:</strong> {{ d.nit_proveedor or '—' }}</p>
+            <p><strong>Contacto:</strong> {{ d.contacto or '—' }}</p>
+            <p><strong>Fecha:</strong> {{ d.fecha|fecha }}</p>
+            <p><strong>Entrega esperada:</strong> {{ d.fecha_entrega|fecha or '—' }}</p>
+            {% endif %}
+            <p><strong>Registrado por:</strong> {{ d.creado_por or '—' }}</p>
+        </div>
+
+        <h3 class="hv-titulo">Ítems</h3>
+        <div class="table-responsive">
+            <table>
+                <thead><tr><th>#</th><th>Descripción</th><th>Cantidad</th><th>Valor unitario</th><th>IVA</th><th>Valor</th></tr></thead>
+                <tbody>
+                    {% for i in d['items'] %}
+                    <tr>
+                        <td>{{ i.fila }}</td><td>{{ i.descripcion }}</td><td>{{ i.cantidad }}</td>
+                        <td>{{ i.valor_unitario|pesos }}</td><td>{{ i.iva_pct }} %</td>
+                        <td>{{ (i.cantidad * i.valor_unitario)|pesos }}</td>
+                    </tr>
+                    {% endfor %}
+                </tbody>
+                <tfoot>
+                    <tr><td colspan="5" class="lbl-total">Subtotal</td><td>{{ d.subtotal|pesos }}</td></tr>
+                    <tr><td colspan="5" class="lbl-total">IVA</td><td>{{ d.iva|pesos }}</td></tr>
+                    <tr><td colspan="5" class="lbl-total"><strong>Total</strong></td><td><strong>{{ d.total|pesos }}</strong></td></tr>
+                </tfoot>
+            </table>
+        </div>
+
+        {% if d.observaciones %}
+        <h3 class="hv-titulo">Observaciones</h3>
+        <p class="texto-largo">{{ d.observaciones }}</p>
+        {% endif %}
+
+        <h3 class="hv-titulo">Cambiar estado</h3>
+        <form class="hv-busqueda" action="{{ url_for(doc.estado, **{doc.id: d.id}) }}" method="POST">
+            <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+            <label class="sr-only" for="estado">Estado</label>
+            <select class="form-control" id="estado" name="estado">{{ m.opciones_dict(doc.estados, d.estado) }}</select>
+            <button type="submit" class="btn btn-primary">Actualizar estado</button>
+        </form>
+    </div>
+</div>
+{% endblock %}

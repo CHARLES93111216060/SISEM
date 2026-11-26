@@ -1,0 +1,143 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+<meta charset="utf-8">
+<title>{{ doc.titulo }} {{ doc.numero }}</title>
+{#
+  Plantilla genérica de documentos administrativos (factura, orden de compra, cuenta de cobro,
+  desprendible de nómina, reporte de metrología). La arma informes._render_documento con:
+    doc.titulo, doc.numero, doc.subtitulo?, doc.bloques [{titulo, pares [(etiqueta, valor)]}],
+    doc.tabla? {titulo, columnas [(texto, alineación l|c|r, ancho %)], filas [[...]]},
+    doc.totales [(etiqueta, valor, destacado)], doc.textos [(titulo, texto)], doc.leyenda?, doc.firmas.
+  Jinja2 escapa todo el texto del usuario.
+#}
+<style>
+@font-face { font-family: 'Jost'; font-weight: 400; src: url('{{ asset("fonts/Jost-Regular.ttf") }}'); }
+@font-face { font-family: 'Jost'; font-weight: 700; src: url('{{ asset("fonts/Jost-Bold.ttf") }}'); }
+
+@page {
+  size: Letter;
+  margin: 1.2cm 1.3cm 1.4cm;
+  @bottom-center { content: "{{ empresa.nombre }} · {{ doc.numero }} · Página " counter(page) " de " counter(pages);
+                   font-family: 'Jost', Arial, sans-serif; font-size: 7pt; color: #5b6b7f; }
+}
+* { box-sizing: border-box; }
+body { font-family: 'Jost', 'Liberation Sans', Arial, sans-serif; font-size: 8.8pt; line-height: 1.3;
+       color: #1d2328; margin: 0; }
+table { border-collapse: collapse; width: 100%; table-layout: fixed; }
+td, th { border: 0.75pt solid #7f8f99; padding: 2.5pt 5pt; vertical-align: middle; overflow-wrap: anywhere; }
+th { font-weight: 700; background: #eef5f8; }
+.band { background: #66A6BE; color: #fff; font-weight: 700; text-align: center; padding: 2.5pt 0;
+        border: 0.75pt solid #66A6BE; }
+.gap { height: 7pt; }
+.l { text-align: left; } .c { text-align: center; } .r { text-align: right; }
+
+.hd td { border: 0.75pt solid #7f8f99; text-align: center; }
+.hd .logo { width: 24%; padding: 5pt 8pt; }
+.hd .logo img { width: 100%; }
+.hd .titulo { font-size: 14pt; font-weight: 700; }
+.hd .sub { display: block; font-size: 7.5pt; font-weight: 400; color: #7a5200; margin-top: 2pt; }
+.hd .numero { width: 24%; font-size: 11pt; font-weight: 700; }
+.hd .empresa { display: block; font-size: 7.5pt; font-weight: 400; color: #425466; }
+
+table.cols > tbody > tr > td { border: 0; padding: 0; vertical-align: top; }
+.pares td { height: 14pt; }
+.pares .et { width: 36%; font-weight: 700; text-align: right; background: #f6f9fb; }
+
+.totales { width: 46%; margin-left: 54%; }
+.totales td { height: 15pt; }
+.totales .et { font-weight: 700; text-align: right; background: #f6f9fb; }
+.totales .destacado td { font-size: 10.5pt; font-weight: 700; background: #dcecf2; }
+
+.texto { white-space: pre-line; min-height: 28pt; padding: 5pt 6pt; }
+.leyenda { margin: 8pt 0 0; font-size: 8pt; color: #425466; text-align: center; }
+
+.firmas { margin-top: 34pt; }
+.firmas td { border: 0; padding: 0 10pt; text-align: center; vertical-align: bottom; }
+.firmas .linea { border-top: 0.75pt solid #1d2328; padding-top: 3pt; font-size: 8pt; }
+.no-corte { page-break-inside: avoid; break-inside: avoid; }
+</style>
+</head>
+<body>
+
+<!-- Encabezado: logo · título · número -->
+<table class="hd">
+  <tr>
+    <td class="logo"><img src="{{ asset(empresa.logo) }}" alt="{{ empresa.nombre }}"></td>
+    <td class="titulo">{{ doc.titulo }}
+      {% if doc.subtitulo %}<span class="sub">{{ doc.subtitulo }}</span>{% endif %}
+    </td>
+    <td class="numero">N° {{ doc.numero }}
+      <span class="empresa">{{ empresa.nombre }}{% if empresa.nit %} · NIT {{ empresa.nit }}{% endif %}</span>
+    </td>
+  </tr>
+</table>
+<div class="gap"></div>
+
+<!-- Bloques de datos en dos columnas -->
+{% for par in doc.bloques|batch(2) %}
+<table class="cols no-corte">
+  <colgroup><col style="width:49%"><col style="width:2%"><col style="width:49%"></colgroup>
+  <tr>
+    {% for bloque in par %}
+    <td>
+      <div class="band">{{ bloque.titulo }}</div>
+      <table class="pares">
+        {% for etiqueta, valor in bloque.pares %}
+        <tr><td class="et">{{ etiqueta }}:</td><td>{{ valor if valor not in (none, '') else '—' }}</td></tr>
+        {% endfor %}
+      </table>
+    </td>
+    {% if loop.first %}<td></td>{% endif %}
+    {% endfor %}
+    {% if par|length == 1 %}<td></td>{% endif %}
+  </tr>
+</table>
+<div class="gap"></div>
+{% endfor %}
+
+<!-- Tabla de detalle -->
+{% if doc.tabla %}
+<div class="band">{{ doc.tabla.titulo }}</div>
+<table>
+  <colgroup>{% for _, _, ancho in doc.tabla.columnas %}<col style="width:{{ ancho }}%">{% endfor %}</colgroup>
+  <tr>{% for texto, _, _ in doc.tabla.columnas %}<th>{{ texto }}</th>{% endfor %}</tr>
+  {% for fila in doc.tabla.filas %}
+  <tr>{% for celda in fila %}<td class="{{ doc.tabla.columnas[loop.index0][1] }}">{{ celda }}</td>{% endfor %}</tr>
+  {% else %}
+  <tr><td class="c" colspan="{{ doc.tabla.columnas|length }}">Sin registros</td></tr>
+  {% endfor %}
+</table>
+<div class="gap"></div>
+{% endif %}
+
+<!-- Totales -->
+{% if doc.totales %}
+<table class="totales no-corte">
+  {% for etiqueta, valor, destacado in doc.totales %}
+  <tr class="{{ 'destacado' if destacado }}"><td class="et">{{ etiqueta }}</td><td class="r">{{ valor }}</td></tr>
+  {% endfor %}
+</table>
+<div class="gap"></div>
+{% endif %}
+
+<!-- Textos (concepto, observaciones) -->
+{% for titulo, texto in doc.textos or [] %}
+{% if texto %}
+<div class="no-corte">
+  <div class="band">{{ titulo }}</div>
+  <table><tr><td class="texto">{{ texto }}</td></tr></table>
+</div>
+<div class="gap"></div>
+{% endif %}
+{% endfor %}
+
+{% if doc.leyenda %}<p class="leyenda">{{ doc.leyenda }}</p>{% endif %}
+
+<!-- Firmas -->
+<table class="firmas no-corte">
+  <tr>{% for firma in doc.firmas %}<td><div class="linea">{{ firma }}</div></td>{% endfor %}</tr>
+</table>
+
+</body>
+</html>

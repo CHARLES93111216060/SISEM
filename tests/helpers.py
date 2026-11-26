@@ -33,6 +33,10 @@ def reiniciar():
     HOJAS.clear()
     INVENTARIO_GUARDADO.clear()
     CRONOGRAMA.clear()
+    for tabla in (DOCUMENTOS['factura'], DOCUMENTOS['orden'], CUENTAS, NOMINAS, METROLOGIA, REPORTES_METROLOGIA):
+        tabla.clear()
+    PERSONAL.clear()
+    PERSONAL.update(_personal_inicial())
 
 
 def guardar(reporte_id, equipo, datos, tecnico=1, cliente=7, fecha='2026-10-14'):
@@ -40,7 +44,7 @@ def guardar(reporte_id, equipo, datos, tecnico=1, cliente=7, fecha='2026-10-14')
 
 
 fake = types.ModuleType('database.db')
-fake.personal = lambda: [(1, 'Juan Pérez'), (2, 'Ana Gómez')]
+fake.personal = lambda: [(1, 'Juan Pérez'), (2, 'Ana Gómez')]    # se redefine abajo con PERSONAL
 fake.clientes = lambda: [(3, 'Otro'), (7, 'Clínica <Norte> & Cía')]      # ids no consecutivos a propósito
 fake.marcas = lambda: [(3, 'B. Braun')]
 fake.servicios = lambda: [(1, 'Preventivo'), (2, 'Correctivo')]
@@ -207,6 +211,216 @@ fake.riesgo_equipos = lambda: [(1, 'I'), (2, 'IIA'), (3, 'IIB'), (4, 'III')]
 fake.buscar_hojas_vida = lambda texto='', limite=20, desplazamiento=0: \
     _buscar_hojas(texto)[desplazamiento:desplazamiento + limite]
 fake.contar_hojas_vida = lambda texto='': len(_buscar_hojas(texto))
+
+# --- personal y acceso (roles) -------------------------------------------------------------------
+from werkzeug.security import generate_password_hash  # noqa: E402
+
+CLAVE_FUNCIONARIO = 'Clave-funcionario-1'
+_HASH_FUNCIONARIO = generate_password_hash(CLAVE_FUNCIONARIO)
+
+
+def _personal_inicial():
+    """Juan (id 1) tiene acceso activo como 'juan.perez'; Ana (id 2) no tiene acceso."""
+    return {
+        1: {'id': 1, 'nombre': 'Juan Pérez', 'documento': '1010', 'cargo': 'Técnico', 'profesion': 'Tecnólogo',
+            'correo': 'juan@ejemplo.com', 'telefono': '3001234567', 'funcion': 'funcionario',
+            'usuario': 'juan.perez', 'clave_hash': _HASH_FUNCIONARIO, 'acceso_activo': True, 'ultimo_acceso': None},
+        2: {'id': 2, 'nombre': 'Ana Gómez', 'documento': '2020', 'cargo': 'Ingeniera', 'profesion': 'Ingeniera',
+            'correo': '', 'telefono': None, 'funcion': 'funcionario',
+            'usuario': None, 'clave_hash': None, 'acceso_activo': False, 'ultimo_acceso': None},
+    }
+
+
+PERSONAL = _personal_inicial()
+
+
+class UsuarioDuplicado(Exception):
+    pass
+
+
+def _sin_clave(p):
+    fila = {k: v for k, v in p.items() if k != 'clave_hash'}
+    fila['tiene_clave'] = bool(p['clave_hash'])
+    return fila
+
+
+def _acceso_personal(usuario):
+    for p in PERSONAL.values():
+        if p['usuario'] and p['usuario'].lower() == usuario.lower():
+            return {k: p[k] for k in ('id', 'nombre', 'funcion', 'clave_hash', 'acceso_activo')}
+    return None
+
+
+def _guardar_empleado(datos, empleado_id=None):
+    if empleado_id is None:
+        empleado_id = max(PERSONAL) + 1
+        PERSONAL[empleado_id] = {'id': empleado_id, 'funcion': 'funcionario', 'usuario': None, 'clave_hash': None,
+                                 'acceso_activo': False, 'ultimo_acceso': None}
+    elif empleado_id not in PERSONAL:
+        return None
+    PERSONAL[empleado_id].update(datos)
+    return empleado_id
+
+
+def _configurar_acceso(empleado_id, usuario, clave_hash, activo):
+    if empleado_id not in PERSONAL:
+        return False
+    if any(p['id'] != empleado_id and (p['usuario'] or '').lower() == usuario.lower() for p in PERSONAL.values()):
+        raise UsuarioDuplicado()
+    p = PERSONAL[empleado_id]
+    p.update(usuario=usuario, acceso_activo=activo, clave_hash=clave_hash or p['clave_hash'])
+    return True
+
+
+fake.personal = lambda: [(p['id'], p['nombre']) for p in PERSONAL.values()]
+fake.UsuarioDuplicado = UsuarioDuplicado
+fake.acceso_personal = _acceso_personal
+fake.estado_acceso = lambda pid: ({k: PERSONAL[pid][k] for k in ('funcion', 'clave_hash', 'acceso_activo')}
+                                  if pid in PERSONAL else None)
+fake.registrar_acceso = lambda pid: None
+fake.empleados = lambda: [_sin_clave(p) for p in PERSONAL.values()]
+fake.obtener_empleado = lambda eid: _sin_clave(PERSONAL[eid]) if eid in PERSONAL else None
+fake.guardar_empleado = _guardar_empleado
+fake.configurar_acceso = _configurar_acceso
+fake.cambiar_clave = lambda eid, h: bool(PERSONAL.get(eid, {}).update(clave_hash=h) or eid in PERSONAL)
+
+# --- facturas y órdenes de compra -----------------------------------------------------------------
+DOCUMENTOS = {'factura': {}, 'orden': {}}
+
+
+def _guardar_documento(tipo, datos, items):
+    nuevo = max(DOCUMENTOS[tipo], default=0) + 1
+    DOCUMENTOS[tipo][nuevo] = dict(datos, id=nuevo, estado='pendiente', items=items)
+    return nuevo
+
+
+def _obtener_documento(tipo, documento_id):
+    d = DOCUMENTOS[tipo].get(documento_id)
+    if not d:
+        return None
+    d = dict(d)
+    if tipo == 'factura':
+        d.update(cliente=dict(fake.clientes()).get(d['id_cliente']), nit='900.1', direccion='Calle 1',
+                 telefono='601', correo='c@x.co', ciudad='Bogotá', departamento='Cundinamarca')
+    return d
+
+
+def _actualizar_estado_documento(tipo, documento_id, estado):
+    if documento_id not in DOCUMENTOS[tipo]:
+        return False
+    DOCUMENTOS[tipo][documento_id]['estado'] = estado
+    return True
+
+
+fake.guardar_documento = _guardar_documento
+fake.actualizar_estado_documento = _actualizar_estado_documento
+fake.obtener_factura = lambda i: _obtener_documento('factura', i)
+fake.obtener_orden = lambda i: _obtener_documento('orden', i)
+fake.listar_facturas = lambda: [_obtener_documento('factura', i) for i in sorted(DOCUMENTOS['factura'], reverse=True)]
+fake.listar_ordenes = lambda: [_obtener_documento('orden', i) for i in sorted(DOCUMENTOS['orden'], reverse=True)]
+
+# --- cuentas de cobro y nómina --------------------------------------------------------------------
+CUENTAS = {}
+NOMINAS = {}
+
+
+class NominaDuplicada(Exception):
+    pass
+
+
+def _con_empleado(registro):
+    if not registro:
+        return None
+    p = PERSONAL.get(registro['id_personal'], {})
+    return dict(registro, empleado=p.get('nombre'), documento=p.get('documento'), cargo=p.get('cargo'),
+                correo=p.get('correo'), telefono=p.get('telefono'), profesion=p.get('profesion'))
+
+
+def _guardar_cuenta(datos):
+    nuevo = max(CUENTAS, default=0) + 1
+    CUENTAS[nuevo] = dict(datos, id=nuevo, estado='pendiente')
+    return nuevo
+
+
+def _guardar_nomina(datos):
+    if any(n['id_personal'] == datos['id_personal'] and n['periodo'] == datos['periodo'] for n in NOMINAS.values()):
+        raise NominaDuplicada()
+    nuevo = max(NOMINAS, default=0) + 1
+    NOMINAS[nuevo] = dict(datos, id=nuevo)
+    return nuevo
+
+
+fake.guardar_cuenta_cobro = _guardar_cuenta
+fake.listar_cuentas_cobro = lambda id_personal=None: [
+    _con_empleado(c) for c in CUENTAS.values() if not id_personal or c['id_personal'] == id_personal]
+fake.obtener_cuenta_cobro = lambda i: _con_empleado(CUENTAS.get(i))
+fake.actualizar_estado_cuenta = lambda i, e, o: bool(i in CUENTAS and not CUENTAS[i].update(estado=e, observaciones=o))
+fake.NominaDuplicada = NominaDuplicada
+fake.guardar_nomina = _guardar_nomina
+fake.listar_nomina = lambda id_personal=None: [
+    _con_empleado(n) for n in NOMINAS.values() if not id_personal or n['id_personal'] == id_personal]
+fake.obtener_nomina = lambda i: _con_empleado(NOMINAS.get(i))
+
+# --- metrología -----------------------------------------------------------------------------------
+METROLOGIA = {}
+REPORTES_METROLOGIA = {}
+
+
+class MetrologiaDuplicada(Exception):
+    pass
+
+
+def _fila_metrologia(mid):
+    m = METROLOGIA[mid]
+    equipo = next(e for e in INVENTARIO if e['id'] == m['id_equipo'])
+    return dict(m, id=mid, serie=equipo['serie'], inventario=equipo['inventario'], equipo=equipo['equipo'],
+                cliente=equipo['entidad'], responsable=dict(fake.personal()).get(m['id_responsable']))
+
+
+def _programar_metrologia(datos):
+    clave = (datos['id_equipo'], datos['tipo'], datos['fecha_programada'])
+    if any((m['id_equipo'], m['tipo'], m['fecha_programada']) == clave for m in METROLOGIA.values()):
+        raise MetrologiaDuplicada()
+    nuevo = max(METROLOGIA, default=0) + 1
+    METROLOGIA[nuevo] = dict(datos, estado='pendiente')
+    return nuevo
+
+
+def _guardar_reporte_metrologia(datos):
+    nuevo = max(REPORTES_METROLOGIA, default=0) + 1
+    REPORTES_METROLOGIA[nuevo] = dict(datos, id=nuevo)
+    if datos['id_cronograma'] and METROLOGIA[datos['id_cronograma']]['id_equipo'] == datos['id_equipo']:
+        METROLOGIA[datos['id_cronograma']]['estado'] = 'realizado'
+    return nuevo
+
+
+def _reporte_metrologia(rid):
+    r = REPORTES_METROLOGIA.get(rid)
+    if not r:
+        return None
+    equipo = next(e for e in INVENTARIO if e['id'] == r['id_equipo'])
+    return dict(r, serie=equipo['serie'], inventario=equipo['inventario'], equipo=equipo['equipo'],
+                marca=equipo['marca'], cliente=equipo['entidad'], tecnico=dict(fake.personal()).get(r['id_tecnico']),
+                tecnico_cargo='Técnico')
+
+
+fake.MetrologiaDuplicada = MetrologiaDuplicada
+fake.programar_metrologia = _programar_metrologia
+fake.metrologia_entre = lambda desde, hasta, estado=None: [
+    _fila_metrologia(i) for i in sorted(METROLOGIA)
+    if desde <= METROLOGIA[i]['fecha_programada'] <= hasta and (not estado or METROLOGIA[i]['estado'] == estado)]
+fake.obtener_metrologia = lambda i: _fila_metrologia(i) if i in METROLOGIA else None
+fake.metrologia_por_realizar = lambda: [
+    _fila_metrologia(i) for i in METROLOGIA if METROLOGIA[i]['estado'] in ('pendiente', 'en_proceso')]
+fake.actualizar_metrologia = lambda i, d: bool(i in METROLOGIA and not METROLOGIA[i].update(d))
+fake.guardar_reporte_metrologia = _guardar_reporte_metrologia
+fake.listar_reportes_metrologia = lambda: [_reporte_metrologia(i) for i in sorted(REPORTES_METROLOGIA, reverse=True)]
+fake.obtener_reporte_metrologia = _reporte_metrologia
+fake.resumen_pendientes = lambda id_personal=None: {
+    'facturas': sum(d['estado'] == 'pendiente' for d in DOCUMENTOS['factura'].values()),
+    'ordenes': len(DOCUMENTOS['orden']), 'metrologia_vencida': 0,
+    'cuentas': sum(c['estado'] == 'pendiente' and (not id_personal or c['id_personal'] == id_personal)
+                   for c in CUENTAS.values())}
 
 import database  # noqa: E402  (paquete de espacio de nombres del proyecto)
 sys.modules['database.db'] = fake

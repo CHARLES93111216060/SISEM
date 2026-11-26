@@ -4,9 +4,9 @@
 <div class="dashboard-shell">
     <section class="page-hero">
         <div>
-            <span class="eyebrow">Panel principal</span>
-            <h2>Bienvenido a SISEM</h2>
-            <p>Genera reportes de mantenimiento, descarga su PDF y consulta el historial desde un solo lugar.</p>
+            <span class="eyebrow">Panel principal · {{ rol_nombre }}</span>
+            <h2>Bienvenido a SISEM, {{ nombre_usuario }}</h2>
+            <p>Genera reportes de mantenimiento y metrología, consulta el historial y gestiona{% if es_admin %} la parte comercial y el talento humano{% else %} tus cuentas de cobro y desprendibles{% endif %} desde un solo lugar.</p>
         </div>
         <div class="hero-actions">
             <a class="btn btn-primary" href="{{ url_for('mantenimiento_correctivo') }}">Crear reporte</a>
@@ -27,6 +27,24 @@
             <h3>Clientes registrados</h3>
             <p>{{ est.clientes }}</p>
         </div>
+        <a class="card card-enlace" href="{{ url_for('cronograma_metrologia') }}">
+            <h3>Metrología vencida</h3>
+            <p>{{ pend.metrologia_vencida if pend.metrologia_vencida is not none else '—' }}</p>
+        </a>
+        <a class="card card-enlace" href="{{ url_for('cuentas_cobro') }}">
+            <h3>{{ 'Cuentas de cobro por gestionar' if es_admin else 'Mis cuentas pendientes' }}</h3>
+            <p>{{ pend.cuentas if pend.cuentas is not none else '—' }}</p>
+        </a>
+        {% if es_admin %}
+        <a class="card card-enlace" href="{{ url_for('facturacion') }}">
+            <h3>Facturas pendientes de pago</h3>
+            <p>{{ pend.facturas if pend.facturas is not none else '—' }}</p>
+        </a>
+        <a class="card card-enlace" href="{{ url_for('ordenes') }}">
+            <h3>Órdenes de compra abiertas</h3>
+            <p>{{ pend.ordenes if pend.ordenes is not none else '—' }}</p>
+        </a>
+        {% endif %}
     </div>
 </div>
 {% endblock %}

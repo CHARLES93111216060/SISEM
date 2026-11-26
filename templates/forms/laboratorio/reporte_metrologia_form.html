@@ -1,0 +1,114 @@
+{% extends 'layout/base.html' %}
+{% import '_macros.html' as m %}
+{% block title %}Nuevo reporte de metrología{% endblock %}
+{% block content %}
+<div class="dashboard-shell">
+    <section class="page-hero">
+        <div>
+            <span class="eyebrow">Laboratorio</span>
+            <h2>Nuevo reporte de metrología</h2>
+            <p>El error y el resultado (conforme / no conforme) los calcula el servidor a partir de las mediciones.</p>
+        </div>
+        <div class="hero-actions"><a class="btn btn-secondary" href="{{ url_for('reportes_metrologia') }}">Volver</a></div>
+    </section>
+
+    <div class="page-panel">
+        {{ m.avisos(error) }}
+        <form action="{{ url_for('guardar_reporte_metrologia') }}" method="POST" autocomplete="off">
+            <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+
+            <h3 class="hv-titulo">Equipo y actividad</h3>
+            <div class="hv-grid">
+                <div class="mb-3">
+                    <label class="form-label" for="programacion">Actividad programada (opcional)</label>
+                    <select class="form-control" id="programacion" name="programacion">
+                        <option value="">-- No viene del cronograma --</option>
+                        {% for p in programadas %}
+                        <option value="{{ p.id }}"{{ ' selected' if v.get('programacion') == p.id|string }}>{{ p.fecha_programada|fecha }} · {{ tipos.get(p.tipo, p.tipo) }} · {{ p.serie }} · {{ p.equipo or '' }}</option>
+                        {% endfor %}
+                    </select>
+                    <small class="ayuda">Si eliges una, debe ser del mismo equipo y quedará «Realizada».</small>
+                </div>
+                <div class="mb-3">
+                    <label class="form-label" for="equipo">Equipo (serie)</label>
+                    <select class="form-control" id="equipo" name="equipo" required>
+                        <option value="">-- Seleccione --</option>
+                        {% for e in equipos %}
+                        <option value="{{ e.id }}"{{ ' selected' if v.get('equipo') == e.id|string }}>{{ e.serie }} · {{ e.equipo or 'Equipo' }}{% if e.cliente %} · {{ e.cliente }}{% endif %}</option>
+                        {% endfor %}
+                    </select>
+                </div>
+                <div class="mb-3">
+                    <label class="form-label" for="tipo">Actividad</label>
+                    <select class="form-control" id="tipo" name="tipo" required>{{ m.opciones_dict(tipos, v.get('tipo', 'calibracion')) }}</select>
+                </div>
+                <div class="mb-3">
+                    <label class="form-label" for="fecha">Fecha</label>
+                    <input type="date" class="form-control" id="fecha" name="fecha" value="{{ v.get('fecha', hoy) }}" required>
+                </div>
+                <div class="mb-3">
+                    <label class="form-label" for="tecnico">Técnico</label>
+                    <select class="form-control" id="tecnico" name="tecnico" required>
+                        <option value="">-- Seleccione --</option>
+                        {{ m.opciones(personal, v.get('tecnico')) }}
+                    </select>
+                </div>
+                <div class="mb-3">
+                    <label class="form-label" for="proxima_fecha">Próxima fecha sugerida</label>
+                    <input type="date" class="form-control" id="proxima_fecha" name="proxima_fecha" value="{{ v.get('proxima_fecha', '') }}">
+                </div>
+            </div>
+
+            <h3 class="hv-titulo">Patrón y magnitud</h3>
+            <div class="hv-grid">
+                <div class="mb-3">
+                    <label class="form-label" for="patron">Equipo patrón (marca, modelo, serie)</label>
+                    <input type="text" class="form-control" id="patron" name="patron" maxlength="150" value="{{ v.get('patron', '') }}" required>
+                </div>
+                <div class="mb-3">
+                    <label class="form-label" for="certificado_patron">Certificado de calibración del patrón</label>
+                    <input type="text" class="form-control" id="certificado_patron" name="certificado_patron" maxlength="80" value="{{ v.get('certificado_patron', '') }}">
+                </div>
+                <div class="mb-3">
+                    <label class="form-label" for="magnitud">Magnitud medida</label>
+                    <input type="text" class="form-control" id="magnitud" name="magnitud" maxlength="60" placeholder="Presión, flujo, temperatura, masa…" value="{{ v.get('magnitud', '') }}" required>
+                </div>
+                <div class="mb-3">
+                    <label class="form-label" for="unidad">Unidad</label>
+                    <input type="text" class="form-control" id="unidad" name="unidad" maxlength="20" placeholder="mmHg, L/min, °C, kg…" value="{{ v.get('unidad', '') }}" required>
+                </div>
+            </div>
+
+            <h3 class="hv-titulo">Mediciones</h3>
+            <p class="ayuda">Usa punto o coma para los decimales. Cumple si |valor medido − valor patrón| ≤ tolerancia.</p>
+            <div class="table-responsive">
+                <table class="hv-accesorios">
+                    <thead><tr><th>#</th><th>Valor patrón</th><th>Valor medido</th><th>Tolerancia (±)</th></tr></thead>
+                    <tbody>
+                        {% set patrones = v.getlist('med_patron') if v.getlist else [] %}
+                        {% set medidos = v.getlist('med_medido') if v.getlist else [] %}
+                        {% set tolerancias = v.getlist('med_tolerancia') if v.getlist else [] %}
+                        {% for n in range(filas) %}
+                        <tr>
+                            <td>{{ n + 1 }}</td>
+                            <td><input type="text" inputmode="decimal" class="form-control" name="med_patron" maxlength="20" aria-label="Valor patrón {{ n + 1 }}" value="{{ patrones[n] if n < patrones|length else '' }}"></td>
+                            <td><input type="text" inputmode="decimal" class="form-control" name="med_medido" maxlength="20" aria-label="Valor medido {{ n + 1 }}" value="{{ medidos[n] if n < medidos|length else '' }}"></td>
+                            <td><input type="text" inputmode="decimal" class="form-control" name="med_tolerancia" maxlength="20" aria-label="Tolerancia {{ n + 1 }}" value="{{ tolerancias[n] if n < tolerancias|length else '' }}"></td>
+                        </tr>
+                        {% endfor %}
+                    </tbody>
+                </table>
+            </div>
+
+            <div class="mb-3 mt-4">
+                <label class="form-label" for="observaciones">Observaciones</label>
+                <textarea class="form-control" id="observaciones" name="observaciones" rows="3" maxlength="2000">{{ v.get('observaciones', '') }}</textarea>
+            </div>
+            <div class="hv-acciones">
+                <button type="submit" class="btn btn-primary">Guardar reporte</button>
+                <a class="btn btn-secondary" href="{{ url_for('reportes_metrologia') }}">Cancelar</a>
+            </div>
+        </form>
+    </div>
+</div>
+{% endblock %}

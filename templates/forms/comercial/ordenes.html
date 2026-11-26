@@ -1,0 +1,60 @@
+{% extends 'layout/base.html' %}
+{% import '_macros.html' as m %}
+{% block title %}Órdenes de compra{% endblock %}
+{% block content %}
+<div class="dashboard-shell">
+    <section class="page-hero">
+        <div>
+            <span class="eyebrow">Módulo comercial</span>
+            <h2>Órdenes de compra</h2>
+            <p>Pedidos a proveedores: repuestos, accesorios e insumos.</p>
+        </div>
+        <div class="hero-actions">
+            <a class="btn btn-primary" href="{{ url_for('nueva_orden') }}">Nueva orden de compra</a>
+        </div>
+    </section>
+
+    <div class="page-panel">
+        <div class="panel-head">
+            <div>
+                <h3>Órdenes registradas</h3>
+                <p>{{ ordenes|length }} en total</p>
+            </div>
+        </div>
+        {% if ordenes %}
+        <label class="sr-only" for="filtro_ordenes">Filtrar órdenes</label>
+        <input type="search" class="form-control mb-3" id="filtro_ordenes" autocomplete="off"
+               data-filtro-tabla="tabla_ordenes" placeholder="Filtrar por número, proveedor o estado">
+        <div class="table-responsive">
+            <table id="tabla_ordenes">
+                <thead>
+                    <tr><th>N°</th><th>Proveedor</th><th>NIT</th><th>Fecha</th><th>Entrega</th><th>Total</th><th>Estado</th>
+                        <th><span class="sr-only">Acciones</span></th></tr>
+                </thead>
+                <tbody>
+                    {% for o in ordenes %}
+                    <tr>
+                        <td><strong>{{ numero_documento('orden', o.id) }}</strong></td>
+                        <td>{{ o.proveedor }}</td>
+                        <td>{{ o.nit_proveedor or '—' }}</td>
+                        <td>{{ o.fecha|fecha }}</td>
+                        <td>{{ o.fecha_entrega|fecha or '—' }}</td>
+                        <td>{{ o.total|pesos }}</td>
+                        <td>{{ m.estado(estados, o.estado) }}</td>
+                        <td class="acciones">
+                            <a class="btn btn-secondary btn-sm" href="{{ url_for('detalle_orden', orden_id=o.id) }}">Ver</a>
+                            <a class="btn btn-primary btn-sm" href="{{ url_for('descargar_orden', orden_id=o.id) }}">PDF</a>
+                        </td>
+                    </tr>
+                    {% endfor %}
+                </tbody>
+            </table>
+        </div>
+        <p class="vacio" id="tabla_ordenes_vacio" hidden>Ninguna orden coincide con la búsqueda.</p>
+        {% else %}
+        <p class="vacio">Todavía no hay órdenes de compra.</p>
+        {% endif %}
+    </div>
+</div>
+{% endblock %}
+{% block scripts %}<script src="{{ url_for('static', filename='js/buscador.js') }}"></script>{% endblock %}

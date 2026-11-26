@@ -1,0 +1,57 @@
+{% extends 'layout/base.html' %}
+{% import '_macros.html' as m %}
+{% block title %}Mi cuenta{% endblock %}
+{% block content %}
+<div class="dashboard-shell">
+    <section class="page-hero">
+        <div>
+            <span class="eyebrow">Mi cuenta</span>
+            <h2>{{ nombre_usuario }}</h2>
+            <p>Rol: <strong>{{ rol_nombre }}</strong> · usuario «{{ session['username'] }}»</p>
+        </div>
+    </section>
+
+    <div class="page-panel">
+        {{ m.avisos(error, 'Tu contraseña se cambió correctamente.' if aviso == 'clave') }}
+
+        {% if es_admin %}
+        <p>La cuenta de administrador se configura en las variables de entorno del servidor
+           (<code>ADMIN_USER</code> y <code>ADMIN_PASSWORD_HASH</code>). Para cambiar su contraseña genera un hash nuevo
+           con <code>tools/generar_hash.py</code> y actualiza la variable en Render.</p>
+        {% else %}
+        {% if empleado %}
+        <h3 class="hv-titulo">Mis datos</h3>
+        <div class="hv-grid">
+            <p><strong>Documento:</strong> {{ empleado.documento }}</p>
+            <p><strong>Cargo:</strong> {{ empleado.cargo }}</p>
+            <p><strong>Profesión:</strong> {{ empleado.profesion }}</p>
+            <p><strong>Correo:</strong> {{ empleado.correo or '—' }}</p>
+            <p><strong>Teléfono:</strong> {{ empleado.telefono or '—' }}</p>
+        </div>
+        <p class="ayuda">Si algún dato está mal, pídele al administrador que lo corrija.</p>
+        {% endif %}
+
+        <h3 class="hv-titulo">Cambiar contraseña</h3>
+        <form action="{{ url_for('cambiar_mi_clave') }}" method="POST" autocomplete="off">
+            <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+            <div class="hv-grid hv-grid-3">
+                <div class="mb-3">
+                    <label class="form-label" for="actual">Contraseña actual</label>
+                    <input type="password" class="form-control" id="actual" name="actual" autocomplete="current-password" required>
+                </div>
+                <div class="mb-3">
+                    <label class="form-label" for="nueva">Nueva contraseña</label>
+                    <input type="password" class="form-control" id="nueva" name="nueva" minlength="{{ clave_min }}" maxlength="128" autocomplete="new-password" required>
+                </div>
+                <div class="mb-3">
+                    <label class="form-label" for="confirmar">Confirmar nueva contraseña</label>
+                    <input type="password" class="form-control" id="confirmar" name="confirmar" maxlength="128" autocomplete="new-password" required>
+                </div>
+            </div>
+            <p class="ayuda">Mínimo {{ clave_min }} caracteres. Al cambiarla se cierran tus sesiones abiertas en otros equipos.</p>
+            <button type="submit" class="btn btn-primary">Cambiar contraseña</button>
+        </form>
+        {% endif %}
+    </div>
+</div>
+{% endblock %}

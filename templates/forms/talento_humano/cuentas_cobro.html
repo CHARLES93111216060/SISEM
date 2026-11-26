@@ -1,0 +1,56 @@
+{% extends 'layout/base.html' %}
+{% import '_macros.html' as m %}
+{% block title %}Cuentas de cobro{% endblock %}
+{% block content %}
+<div class="dashboard-shell">
+    <section class="page-hero">
+        <div>
+            <span class="eyebrow">Talento humano</span>
+            <h2>{{ 'Cuentas de cobro' if es_admin else 'Mis cuentas de cobro' }}</h2>
+            <p>{% if es_admin %}Cuentas radicadas por el personal: revísalas, apruébalas y márcalas como pagadas.
+               {% else %}Radica tus cuentas de cobro y consulta en qué estado van.{% endif %}</p>
+        </div>
+        <div class="hero-actions">
+            <a class="btn btn-primary" href="{{ url_for('nueva_cuenta_cobro') }}">Nueva cuenta de cobro</a>
+        </div>
+    </section>
+
+    <div class="page-panel">
+        <div class="panel-head"><div><h3>Cuentas registradas</h3><p>{{ cuentas|length }} en total</p></div></div>
+        {% if cuentas %}
+        <label class="sr-only" for="filtro_cuentas">Filtrar cuentas</label>
+        <input type="search" class="form-control mb-3" id="filtro_cuentas" autocomplete="off"
+               data-filtro-tabla="tabla_cuentas" placeholder="Filtrar por número, empleado, concepto o estado">
+        <div class="table-responsive">
+            <table id="tabla_cuentas">
+                <thead>
+                    <tr><th>N°</th>{% if es_admin %}<th>Empleado</th>{% endif %}<th>Fecha</th><th>Periodo</th>
+                        <th>Concepto</th><th>Valor</th><th>Estado</th><th><span class="sr-only">Acciones</span></th></tr>
+                </thead>
+                <tbody>
+                    {% for c in cuentas %}
+                    <tr>
+                        <td><strong>{{ numero_documento('cuenta', c.id) }}</strong></td>
+                        {% if es_admin %}<td>{{ c.empleado or '—' }}</td>{% endif %}
+                        <td>{{ c.fecha|fecha }}</td>
+                        <td>{{ c.periodo_inicio|fecha }} – {{ c.periodo_fin|fecha }}</td>
+                        <td>{{ c.concepto|truncate(60) }}</td>
+                        <td>{{ c.valor|pesos }}</td>
+                        <td>{{ m.estado(estados, c.estado) }}</td>
+                        <td class="acciones">
+                            <a class="btn btn-secondary btn-sm" href="{{ url_for('detalle_cuenta_cobro', cuenta_id=c.id) }}">Ver</a>
+                            <a class="btn btn-primary btn-sm" href="{{ url_for('descargar_cuenta_cobro', cuenta_id=c.id) }}">PDF</a>
+                        </td>
+                    </tr>
+                    {% endfor %}
+                </tbody>
+            </table>
+        </div>
+        <p class="vacio" id="tabla_cuentas_vacio" hidden>Ninguna cuenta coincide con la búsqueda.</p>
+        {% else %}
+        <p class="vacio">Todavía no hay cuentas de cobro.</p>
+        {% endif %}
+    </div>
+</div>
+{% endblock %}
+{% block scripts %}<script src="{{ url_for('static', filename='js/buscador.js') }}"></script>{% endblock %}

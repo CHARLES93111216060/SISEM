@@ -1,0 +1,63 @@
+{% extends 'layout/base.html' %}
+{% import '_macros.html' as m %}
+{% block title %}{{ tipos.get(act.tipo, act.tipo) }} · {{ act.serie }}{% endblock %}
+{% block content %}
+<div class="dashboard-shell">
+    <section class="page-hero">
+        <div>
+            <span class="eyebrow">Cronograma de metrología</span>
+            <h2>{{ tipos.get(act.tipo, act.tipo) }} · {{ act.equipo or 'Equipo' }}</h2>
+            <p>{{ m.estado(estados, act.estado, act.fecha_programada) }} · programada para el {{ act.fecha_programada|fecha }}</p>
+        </div>
+        <div class="hero-actions">
+            {% if act.estado in ('pendiente', 'en_proceso') %}
+            <a class="btn btn-primary" href="{{ url_for('nuevo_reporte_metrologia', programacion=act.id) }}">Registrar reporte</a>
+            {% endif %}
+            <a class="btn btn-secondary" href="{{ url_for('cronograma_metrologia', anio=act.fecha_programada.year) }}">Volver</a>
+        </div>
+    </section>
+
+    <div class="page-panel">
+        {{ m.avisos(error, 'Actividad actualizada.' if aviso == 'actualizado') }}
+        <div class="hv-grid">
+            <p><strong>Equipo:</strong> {{ act.equipo or '—' }}</p>
+            <p><strong>Serie:</strong> {{ act.serie }}</p>
+            <p><strong>N° inventario:</strong> {{ act.inventario or '—' }}</p>
+            <p><strong>Cliente:</strong> {{ act.cliente or '—' }}</p>
+        </div>
+
+        <h3 class="hv-titulo">Seguimiento</h3>
+        <p class="ayuda">Al guardar un reporte de metrología enlazado a esta actividad, queda «Realizado» automáticamente.</p>
+        <form action="{{ url_for('actualizar_metrologia', metrologia_id=act.id) }}" method="POST" autocomplete="off">
+            <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+            <div class="hv-grid">
+                <div class="mb-3">
+                    <label class="form-label" for="estado">Estado</label>
+                    <select class="form-control" id="estado" name="estado">{{ m.opciones_dict(estados, act.estado) }}</select>
+                </div>
+                <div class="mb-3">
+                    <label class="form-label" for="fecha_programada">Fecha programada</label>
+                    <input type="date" class="form-control" id="fecha_programada" name="fecha_programada"
+                           value="{{ act.fecha_programada.isoformat() }}" required>
+                </div>
+                <div class="mb-3">
+                    <label class="form-label" for="proveedor">Laboratorio / proveedor</label>
+                    <input type="text" class="form-control" id="proveedor" name="proveedor" maxlength="150" value="{{ act.proveedor or '' }}">
+                </div>
+                <div class="mb-3">
+                    <label class="form-label" for="responsable">Responsable interno</label>
+                    <select class="form-control" id="responsable" name="responsable">
+                        <option value="">-- Sin asignar --</option>
+                        {{ m.opciones(personal, act.id_responsable|string if act.id_responsable else '') }}
+                    </select>
+                </div>
+            </div>
+            <div class="mb-3">
+                <label class="form-label" for="observaciones">Observaciones</label>
+                <textarea class="form-control" id="observaciones" name="observaciones" rows="2" maxlength="1000">{{ act.observaciones or '' }}</textarea>
+            </div>
+            <button type="submit" class="btn btn-primary">Guardar cambios</button>
+        </form>
+    </div>
+</div>
+{% endblock %}

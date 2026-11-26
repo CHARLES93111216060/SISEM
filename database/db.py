@@ -484,3 +484,436 @@ def guardar_inventario(datos):
         raise InventarioDuplicado(_UNICOS_INVENTARIO.get(restriccion)) from error
     logger.info("Inventario guardado con id %s", nuevo_id)
     return nuevo_id
+
+
+# -----------------------------------------------------------------------------------------
+# Talento humano: empleados (tabla personal) y acceso al aplicativo (rol "funcionario")
+# Columnas de acceso: funcion, usuario, clave_hash, acceso_activo, ultimo_acceso
+# (database/postgres/04_roles_y_modulos.sql). La clave NUNCA sale hacia las plantillas.
+# -----------------------------------------------------------------------------------------
+class UsuarioDuplicado(Exception):
+    """Ya existe otro empleado con ese nombre de usuario (índice personal_usuario_key)."""
+
+
+_COLUMNAS_EMPLEADO = ('nombre', 'documento', 'cargo', 'profesion', 'correo', 'telefono')
+_SELECT_EMPLEADO = (
+    "SELECT id, nombre, documento, cargo, profesion, correo, telefono, funcion, usuario, "
+    "       acceso_activo, ultimo_acceso, (clave_hash IS NOT NULL) AS tiene_clave "
+    "FROM personal "
+)
+
+
+def acceso_personal(usuario):
+    """Datos para iniciar sesión (incluye clave_hash); None si el usuario no existe.
+
+    El usuario no distingue mayúsculas. Lanza la excepción si la base falla (el login
+    debe responder error, no "credenciales inválidas").
+    """
+    with _cursor(dict_row) as cursor:
+        cursor.execute(
+            "SELECT id, nombre, funcion, clave_hash, acceso_activo FROM personal "
+            "WHERE usuario IS NOT NULL AND lower(usuario) = lower(%s);",
+            (usuario,),
+        )
+        return cursor.fetchone()
+
+
+def estado_acceso(personal_id):
+    """funcion, clave_hash y acceso_activo de un empleado (para revalidar su sesión)."""
+    with _cursor(dict_row) as cursor:
+        cursor.execute("SELECT funcion, clave_hash, acceso_activo FROM personal WHERE id = %s;",
+                       (personal_id,))
+        return cursor.fetchone()
+
+
+def registrar_acceso(personal_id):
+    """Guarda la fecha del último inicio de sesión (si falla no impide entrar)."""
+    try:
+        with _cursor() as cursor:
+            cursor.execute("UPDATE personal SET ultimo_acceso = now() WHERE id = %s;", (personal_id,))
+    except Exception:
+        logger.exception("No se pudo registrar el último acceso de %s", personal_id)
+
+
+def empleados():
+    """Todo el personal (diccionarios), sin la clave."""
+    return _leer_catalogo(_SELECT_EMPLEADO + "ORDER BY nombre;", como_dict=True)
+
+
+def obtener_empleado(empleado_id):
+    with _cursor(dict_row) as cursor:
+        cursor.execute(_SELECT_EMPLEADO + "WHERE id = %s;", (empleado_id,))
+        return cursor.fetchone()
+
+
+def guardar_empleado(datos, empleado_id=None):
+    """Crea (empleado_id None) o actualiza un empleado; devuelve su id (None si no existe).
+
+    Solo se escriben las columnas de _COLUMNAS_EMPLEADO. Un empleado nuevo entra con
+    funcion 'funcionario' y sin acceso al aplicativo (lo habilita el administrador).
+    """
+    valores = [datos[c] for c in _COLUMNAS_EMPLEADO]
+    with _cursor() as cursor:
+        if empleado_id is None:
+            cursor.execute(
+                sql.SQL("INSERT INTO personal ({}, funcion) VALUES ({}, 'funcionario') RETURNING id;").format(
+                    sql.SQL(', ').join(map(sql.Identifier, _COLUMNAS_EMPLEADO)),
+                    sql.SQL(', ').join(sql.Placeholder() * len(_COLUMNAS_EMPLEADO))),
+                valores,
+            )
+        else:
+            cursor.execute(
+                sql.SQL("UPDATE personal SET {} WHERE id = %s RETURNING id;").format(
+                    sql.SQL(', ').join(sql.SQL("{} = %s").format(sql.Identifier(c))
+                                       for c in _COLUMNAS_EMPLEADO)),
+                valores + [empleado_id],
+            )
+        fila = cursor.fetchone()
+        return fila[0] if fila else None
+
+
+def configurar_acceso(empleado_id, usuario, clave_hash, activo):
+    """Asigna usuario, (opcionalmente) nueva clave y estado del acceso.
+
+    ``clave_hash`` None conserva la clave actual. Devuelve False si el empleado no existe.
+    Lanza UsuarioDuplicado si el usuario ya lo tiene otra persona.
+    """
+    try:
+        with _cursor() as cursor:
+            cursor.execute(
+                "UPDATE personal SET usuario = %s, clave_hash = COALESCE(%s, clave_hash), "
+                "acceso_activo = %s, funcion = COALESCE(NULLIF(funcion, ''), 'funcionario') "
+                "WHERE id = %s;",
+                (usuario, clave_hash, activo, empleado_id),
+            )
+            return cursor.rowcount > 0
+    except errors.UniqueViolation as error:
+        raise UsuarioDuplicado() from error
+
+
+def cambiar_clave(empleado_id, clave_hash):
+    with _cursor() as cursor:
+        cursor.execute("UPDATE personal SET clave_hash = %s WHERE id = %s;", (clave_hash, empleado_id))
+        return cursor.rowcount > 0
+
+
+# -----------------------------------------------------------------------------------------
+# Comercial: facturación y órdenes de compra (documento + ítems en una transacción)
+# Los nombres de tabla salen de este diccionario fijo, nunca del usuario.
+# -----------------------------------------------------------------------------------------
+_DOCUMENTOS = {
+    'factura': ('facturas', 'facturas_items', 'id_factura'),
+    'orden': ('ordenes_compra', 'ordenes_compra_items', 'id_orden'),
+}
+_COLUMNAS_ITEM = ('fila', 'descripcion', 'cantidad', 'valor_unitario', 'iva_pct')
+
+
+def guardar_documento(tipo, datos, items):
+    """Inserta la factura u orden (``datos``: columnas fijas validadas en app.py) y sus
+    ítems en una sola transacción. Devuelve el id nuevo."""
+    tabla, tabla_items, fk = _DOCUMENTOS[tipo]
+    with _cursor() as cursor:
+        cursor.execute(
+            sql.SQL("INSERT INTO {} ({}) VALUES ({}) RETURNING id;").format(
+                sql.Identifier(tabla),
+                sql.SQL(', ').join(map(sql.Identifier, datos)),
+                sql.SQL(', ').join(sql.Placeholder() * len(datos))),
+            list(datos.values()),
+        )
+        nuevo_id = cursor.fetchone()[0]
+        if items:
+            cursor.executemany(
+                sql.SQL("INSERT INTO {} ({}, {}) VALUES (%s, {});").format(
+                    sql.Identifier(tabla_items), sql.Identifier(fk),
+                    sql.SQL(', ').join(map(sql.Identifier, _COLUMNAS_ITEM)),
+                    sql.SQL(', ').join(sql.Placeholder() * len(_COLUMNAS_ITEM))),
+                [[nuevo_id] + [item[c] for c in _COLUMNAS_ITEM] for item in items],
+            )
+    logger.info("%s guardada con id %s", tipo, nuevo_id)
+    return nuevo_id
+
+
+def _items_documento(cursor, tipo, documento_id):
+    _, tabla_items, fk = _DOCUMENTOS[tipo]
+    cursor.execute(
+        sql.SQL("SELECT fila, descripcion, cantidad, valor_unitario, iva_pct FROM {} "
+                "WHERE {} = %s ORDER BY fila;").format(sql.Identifier(tabla_items), sql.Identifier(fk)),
+        (documento_id,),
+    )
+    return cursor.fetchall()
+
+
+def actualizar_estado_documento(tipo, documento_id, estado):
+    tabla = _DOCUMENTOS[tipo][0]
+    with _cursor() as cursor:
+        cursor.execute(sql.SQL("UPDATE {} SET estado = %s WHERE id = %s;").format(sql.Identifier(tabla)),
+                       (estado, documento_id))
+        return cursor.rowcount > 0
+
+
+def listar_facturas():
+    return _leer_catalogo(
+        "SELECT f.id, f.fecha_emision, f.fecha_vencimiento, f.estado, f.total, c.nombre AS cliente "
+        "FROM facturas f LEFT JOIN clientes c ON c.id = f.id_cliente ORDER BY f.id DESC;",
+        como_dict=True,
+    )
+
+
+def obtener_factura(factura_id):
+    """Factura con datos del cliente e ítems; None si no existe."""
+    with _cursor(dict_row) as cursor:
+        cursor.execute(
+            "SELECT f.*, c.nombre AS cliente, c.nit, c.direccion, c.telefono, c.correo, "
+            "       c.ciudad, c.departamento "
+            "FROM facturas f LEFT JOIN clientes c ON c.id = f.id_cliente WHERE f.id = %s;",
+            (factura_id,),
+        )
+        factura = cursor.fetchone()
+        if factura:
+            factura['items'] = _items_documento(cursor, 'factura', factura_id)
+        return factura
+
+
+def listar_ordenes():
+    return _leer_catalogo(
+        "SELECT id, proveedor, nit_proveedor, fecha, fecha_entrega, estado, total "
+        "FROM ordenes_compra ORDER BY id DESC;",
+        como_dict=True,
+    )
+
+
+def obtener_orden(orden_id):
+    with _cursor(dict_row) as cursor:
+        cursor.execute("SELECT * FROM ordenes_compra WHERE id = %s;", (orden_id,))
+        orden = cursor.fetchone()
+        if orden:
+            orden['items'] = _items_documento(cursor, 'orden', orden_id)
+        return orden
+
+
+# -----------------------------------------------------------------------------------------
+# Talento humano: cuentas de cobro y nómina
+# -----------------------------------------------------------------------------------------
+_EMPLEADO_DOC = ("p.nombre AS empleado, p.documento, p.cargo, p.correo, p.telefono, p.profesion")
+
+
+def guardar_cuenta_cobro(datos):
+    with _cursor() as cursor:
+        cursor.execute(
+            "INSERT INTO cuentas_cobro (id_personal, fecha, periodo_inicio, periodo_fin, concepto, "
+            "valor, observaciones, creado_por) VALUES (%s, %s, %s, %s, %s, %s, %s, %s) RETURNING id;",
+            (datos['id_personal'], datos['fecha'], datos['periodo_inicio'], datos['periodo_fin'],
+             datos['concepto'], datos['valor'], datos['observaciones'], datos['creado_por']),
+        )
+        return cursor.fetchone()[0]
+
+
+def listar_cuentas_cobro(id_personal=None):
+    """Todas (admin) o solo las de un empleado (funcionario)."""
+    filtro, parametros = ("WHERE cc.id_personal = %s ", (id_personal,)) if id_personal else ("", ())
+    return _leer_catalogo(
+        "SELECT cc.id, cc.fecha, cc.periodo_inicio, cc.periodo_fin, cc.concepto, cc.valor, cc.estado, "
+        "       cc.id_personal, p.nombre AS empleado "
+        "FROM cuentas_cobro cc LEFT JOIN personal p ON p.id = cc.id_personal "
+        + filtro + "ORDER BY cc.id DESC;",
+        parametros, como_dict=True,
+    )
+
+
+def obtener_cuenta_cobro(cuenta_id):
+    with _cursor(dict_row) as cursor:
+        cursor.execute(
+            "SELECT cc.*, " + _EMPLEADO_DOC + " FROM cuentas_cobro cc "
+            "LEFT JOIN personal p ON p.id = cc.id_personal WHERE cc.id = %s;",
+            (cuenta_id,),
+        )
+        return cursor.fetchone()
+
+
+def actualizar_estado_cuenta(cuenta_id, estado, observaciones):
+    with _cursor() as cursor:
+        cursor.execute("UPDATE cuentas_cobro SET estado = %s, observaciones = %s WHERE id = %s;",
+                       (estado, observaciones, cuenta_id))
+        return cursor.rowcount > 0
+
+
+class NominaDuplicada(Exception):
+    """El empleado ya tiene liquidada la nómina de ese mes (restricción nomina_unica)."""
+
+
+_COLUMNAS_NOMINA = ('id_personal', 'periodo', 'salario_base', 'dias_trabajados', 'auxilio_transporte',
+                    'horas_extra', 'bonificaciones', 'salud', 'pension', 'otras_deducciones',
+                    'total_devengado', 'total_deducciones', 'neto_pagar', 'observaciones', 'creado_por')
+
+
+def guardar_nomina(datos):
+    try:
+        with _cursor() as cursor:
+            cursor.execute(
+                sql.SQL("INSERT INTO nomina ({}) VALUES ({}) RETURNING id;").format(
+                    sql.SQL(', ').join(map(sql.Identifier, _COLUMNAS_NOMINA)),
+                    sql.SQL(', ').join(sql.Placeholder() * len(_COLUMNAS_NOMINA))),
+                [datos[c] for c in _COLUMNAS_NOMINA],
+            )
+            return cursor.fetchone()[0]
+    except errors.UniqueViolation as error:
+        raise NominaDuplicada() from error
+
+
+def listar_nomina(id_personal=None):
+    filtro, parametros = ("WHERE n.id_personal = %s ", (id_personal,)) if id_personal else ("", ())
+    return _leer_catalogo(
+        "SELECT n.id, n.periodo, n.dias_trabajados, n.total_devengado, n.total_deducciones, "
+        "       n.neto_pagar, n.id_personal, p.nombre AS empleado "
+        "FROM nomina n LEFT JOIN personal p ON p.id = n.id_personal "
+        + filtro + "ORDER BY n.periodo DESC, p.nombre;",
+        parametros, como_dict=True,
+    )
+
+
+def obtener_nomina(nomina_id):
+    with _cursor(dict_row) as cursor:
+        cursor.execute(
+            "SELECT n.*, " + _EMPLEADO_DOC + " FROM nomina n "
+            "LEFT JOIN personal p ON p.id = n.id_personal WHERE n.id = %s;",
+            (nomina_id,),
+        )
+        return cursor.fetchone()
+
+
+# -----------------------------------------------------------------------------------------
+# Laboratorio: metrología (cronograma y reportes de calibración / verificación)
+# -----------------------------------------------------------------------------------------
+class MetrologiaDuplicada(Exception):
+    """Ya está programada la misma actividad para ese equipo y fecha."""
+
+
+_SELECT_METROLOGIA = (
+    "SELECT mc.id, mc.id_equipo, mc.tipo, mc.fecha_programada, mc.estado, mc.proveedor, "
+    "       mc.id_responsable, mc.observaciones, i.serie, i.serial_inventario_interno AS inventario, "
+    "       te.equipo, c.nombre AS cliente, p.nombre AS responsable "
+    "FROM metrologia_cronograma mc "
+    "JOIN inventario i ON i.id = mc.id_equipo "
+    "LEFT JOIN tipo_equipo te ON te.id = i.id_equipo "
+    "LEFT JOIN clientes c ON c.id = i.id_cliente "
+    "LEFT JOIN personal p ON p.id = mc.id_responsable "
+)
+
+
+def programar_metrologia(datos):
+    try:
+        with _cursor() as cursor:
+            cursor.execute(
+                "INSERT INTO metrologia_cronograma (id_equipo, tipo, fecha_programada, proveedor, "
+                "id_responsable, observaciones) VALUES (%s, %s, %s, %s, %s, %s) RETURNING id;",
+                (datos['id_equipo'], datos['tipo'], datos['fecha_programada'], datos['proveedor'],
+                 datos['id_responsable'], datos['observaciones']),
+            )
+            return cursor.fetchone()[0]
+    except errors.UniqueViolation as error:
+        raise MetrologiaDuplicada() from error
+
+
+def metrologia_entre(desde, hasta, estado=None):
+    """Actividades programadas entre dos fechas. Lanza la excepción si la base falla
+    (la página debe decir que hubo un error, no que no hay nada programado)."""
+    consulta = _SELECT_METROLOGIA + "WHERE mc.fecha_programada BETWEEN %s AND %s "
+    parametros = [desde, hasta]
+    if estado:
+        consulta += "AND mc.estado = %s "
+        parametros.append(estado)
+    with _cursor(dict_row) as cursor:
+        cursor.execute(consulta + "ORDER BY mc.fecha_programada, mc.id;", parametros)
+        return cursor.fetchall()
+
+
+def obtener_metrologia(metrologia_id):
+    with _cursor(dict_row) as cursor:
+        cursor.execute(_SELECT_METROLOGIA + "WHERE mc.id = %s;", (metrologia_id,))
+        return cursor.fetchone()
+
+
+def metrologia_por_realizar():
+    """Actividades pendientes o en proceso (para enlazarlas desde el reporte)."""
+    return _leer_catalogo(_SELECT_METROLOGIA + "WHERE mc.estado IN ('pendiente', 'en_proceso') "
+                          "ORDER BY mc.fecha_programada;", como_dict=True)
+
+
+def actualizar_metrologia(metrologia_id, datos):
+    with _cursor() as cursor:
+        cursor.execute(
+            "UPDATE metrologia_cronograma SET estado = %s, fecha_programada = %s, proveedor = %s, "
+            "id_responsable = %s, observaciones = %s WHERE id = %s;",
+            (datos['estado'], datos['fecha_programada'], datos['proveedor'], datos['id_responsable'],
+             datos['observaciones'], metrologia_id),
+        )
+        return cursor.rowcount > 0
+
+
+def guardar_reporte_metrologia(datos):
+    """Guarda el reporte y, si viene de una actividad programada del mismo equipo, la marca
+    como realizada en la misma transacción. Devuelve el id del reporte."""
+    try:
+        with _cursor() as cursor:
+            cursor.execute(
+                "INSERT INTO metrologia_reportes (id_equipo, id_cronograma, tipo, fecha, id_tecnico, patron, "
+                "certificado_patron, magnitud, unidad, mediciones, resultado, proxima_fecha, observaciones, "
+                "creado_por) VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s) RETURNING id;",
+                (datos['id_equipo'], datos['id_cronograma'], datos['tipo'], datos['fecha'], datos['id_tecnico'],
+                 datos['patron'], datos['certificado_patron'], datos['magnitud'], datos['unidad'],
+                 Jsonb(datos['mediciones']), datos['resultado'], datos['proxima_fecha'],
+                 datos['observaciones'], datos['creado_por']),
+            )
+            nuevo_id = cursor.fetchone()[0]
+            if datos['id_cronograma']:
+                cursor.execute(
+                    "UPDATE metrologia_cronograma SET estado = 'realizado' "
+                    "WHERE id = %s AND id_equipo = %s;",
+                    (datos['id_cronograma'], datos['id_equipo']),
+                )
+            return nuevo_id
+    except errors.UniqueViolation as error:
+        raise MetrologiaDuplicada() from error
+
+
+_SELECT_REPORTE_METROLOGIA = (
+    "SELECT r.*, i.serie, i.serial_inventario_interno AS inventario, i.lote, te.equipo, m.brand AS marca, "
+    "       c.nombre AS cliente, p.nombre AS tecnico, p.cargo AS tecnico_cargo "
+    "FROM metrologia_reportes r "
+    "JOIN inventario i ON i.id = r.id_equipo "
+    "LEFT JOIN tipo_equipo te ON te.id = i.id_equipo "
+    "LEFT JOIN marcas m ON m.id = i.marca "
+    "LEFT JOIN clientes c ON c.id = i.id_cliente "
+    "LEFT JOIN personal p ON p.id = r.id_tecnico "
+)
+
+
+def listar_reportes_metrologia():
+    return _leer_catalogo(_SELECT_REPORTE_METROLOGIA + "ORDER BY r.id DESC;", como_dict=True)
+
+
+def obtener_reporte_metrologia(reporte_id):
+    with _cursor(dict_row) as cursor:
+        cursor.execute(_SELECT_REPORTE_METROLOGIA + "WHERE r.id = %s;", (reporte_id,))
+        return cursor.fetchone()
+
+
+# -----------------------------------------------------------------------------------------
+# Panel principal: pendientes por módulo (tolerante: si una tabla falta, ese dato sale vacío)
+# -----------------------------------------------------------------------------------------
+def resumen_pendientes(id_personal=None):
+    """{'facturas', 'cuentas', 'metrologia_vencida', 'ordenes'} -> número o None si falla."""
+    consultas = {
+        'facturas': ("SELECT count(*) FROM facturas WHERE estado = 'pendiente';", ()),
+        'ordenes': ("SELECT count(*) FROM ordenes_compra WHERE estado IN ('pendiente', 'aprobada');", ()),
+        'metrologia_vencida': ("SELECT count(*) FROM metrologia_cronograma "
+                               "WHERE estado = 'pendiente' AND fecha_programada < CURRENT_DATE;", ()),
+        'cuentas': (("SELECT count(*) FROM cuentas_cobro WHERE estado = 'pendiente' AND id_personal = %s;",
+                     (id_personal,)) if id_personal else
+                    ("SELECT count(*) FROM cuentas_cobro WHERE estado = 'pendiente';", ())),
+    }
+    resumen = {}
+    for clave, (consulta, parametros) in consultas.items():
+        filas = _leer_catalogo(consulta, parametros)
+        resumen[clave] = filas[0][0] if filas else None
+    return resumen

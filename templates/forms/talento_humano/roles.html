@@ -1,0 +1,58 @@
+{% extends 'layout/base.html' %}
+{% import '_macros.html' as m %}
+{% block title %}Roles y permisos{% endblock %}
+{% block content %}
+<div class="dashboard-shell">
+    <section class="page-hero">
+        <div>
+            <span class="eyebrow">Talento humano</span>
+            <h2>Roles y permisos</h2>
+            <p>Hay dos roles: <strong>Administrador</strong> (usuario «{{ admin_usuario }}», definido en las variables de entorno)
+               y <strong>Funcionario</strong> (cada persona de la tabla personal con acceso activo).</p>
+        </div>
+        <div class="hero-actions"><a class="btn btn-secondary" href="{{ url_for('empleados') }}">Empleados</a></div>
+    </section>
+
+    <div class="page-panel">
+        {{ m.avisos(ok=('Acceso de «' ~ guardado ~ '» actualizado.') if guardado) }}
+
+        <h3 class="hv-titulo">Qué puede hacer cada rol</h3>
+        <div class="table-responsive">
+            <table>
+                <thead><tr><th>Módulo</th>{% for clave, nombre in roles.items() %}<th>{{ nombre }}</th>{% endfor %}</tr></thead>
+                <tbody>
+                    {% for modulo, admin, funcionario in permisos %}
+                    <tr><td><strong>{{ modulo }}</strong></td><td>{{ admin }}</td><td>{{ funcionario }}</td></tr>
+                    {% endfor %}
+                </tbody>
+            </table>
+        </div>
+
+        <h3 class="hv-titulo">Acceso del personal (rol funcionario)</h3>
+        <p class="ayuda">Para que una persona entre al aplicativo asígnale usuario y contraseña y activa su acceso.
+           Desactivar el acceso o cambiar la contraseña cierra de inmediato las sesiones que tenga abiertas.</p>
+        <div class="table-responsive">
+            <table>
+                <thead><tr><th>Nombre</th><th>Función</th><th>Usuario</th><th>Contraseña</th><th>Acceso</th><th>Último ingreso</th>
+                    <th><span class="sr-only">Acciones</span></th></tr></thead>
+                <tbody>
+                    {% for e in empleados %}
+                    <tr>
+                        <td><strong>{{ e.nombre }}</strong><br><small>{{ e.cargo }}</small></td>
+                        <td>{{ e.funcion or '—' }}{% if e.funcion and e.funcion != 'funcionario' %} <small>(no puede entrar: la función debe ser «funcionario»)</small>{% endif %}</td>
+                        <td>{{ e.usuario or '—' }}</td>
+                        <td>{{ 'Asignada' if e.tiene_clave else 'Sin asignar' }}</td>
+                        <td>{% if e.acceso_activo %}<span class="crono-chip crono-realizado">Activo</span>
+                            {% else %}<span class="crono-chip crono-cancelado">Inactivo</span>{% endif %}</td>
+                        <td>{{ e.ultimo_acceso.strftime('%d/%m/%Y %H:%M') if e.ultimo_acceso else 'Nunca' }}</td>
+                        <td class="acciones"><a class="btn btn-primary btn-sm" href="{{ url_for('configurar_acceso', empleado_id=e.id) }}">Configurar acceso</a></td>
+                    </tr>
+                    {% else %}
+                    <tr><td colspan="7" class="vacio">No hay personal registrado.</td></tr>
+                    {% endfor %}
+                </tbody>
+            </table>
+        </div>
+    </div>
+</div>
+{% endblock %}

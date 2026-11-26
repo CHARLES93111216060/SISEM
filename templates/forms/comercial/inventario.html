@@ -10,9 +10,11 @@
             <h2>Inventario</h2>
             <p>Consulta y gestiona el inventario de los equipos registrados.</p>
         </div>
+        {% if es_admin %}{# ingresar y cargar Excel son solo del administrador #}
         <div class="hero-actions">
             <a class="btn btn-primary" href="{{ url_for('ingresar_inventario') }}">Ingresar nuevo item al inventario</a>
         </div>
+        {% endif %}
     </section>
 
     <div class="page-panel">

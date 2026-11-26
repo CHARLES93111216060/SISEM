@@ -1,0 +1,60 @@
+{% extends 'layout/base.html' %}
+{% import '_macros.html' as m %}
+{% block title %}Programar metrología{% endblock %}
+{% block content %}
+<div class="dashboard-shell">
+    <section class="page-hero">
+        <div>
+            <span class="eyebrow">Laboratorio</span>
+            <h2>Programar actividad de metrología</h2>
+            <p>Un equipo no puede tener la misma actividad dos veces en la misma fecha.</p>
+        </div>
+        <div class="hero-actions"><a class="btn btn-secondary" href="{{ url_for('cronograma_metrologia') }}">Volver</a></div>
+    </section>
+
+    <div class="page-panel">
+        {{ m.avisos(error) }}
+        <form action="{{ url_for('guardar_metrologia') }}" method="POST" autocomplete="off">
+            <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+            <div class="hv-grid">
+                <div class="mb-3">
+                    <label class="form-label" for="equipo">Equipo (serie)</label>
+                    <select class="form-control" id="equipo" name="equipo" required>
+                        <option value="">-- Seleccione --</option>
+                        {% for e in equipos %}
+                        <option value="{{ e.id }}"{{ ' selected' if v.get('equipo') == e.id|string }}>{{ e.serie }} · {{ e.equipo or 'Equipo' }}{% if e.cliente %} · {{ e.cliente }}{% endif %}</option>
+                        {% endfor %}
+                    </select>
+                </div>
+                <div class="mb-3">
+                    <label class="form-label" for="tipo">Actividad</label>
+                    <select class="form-control" id="tipo" name="tipo" required>{{ m.opciones_dict(tipos, v.get('tipo', 'calibracion')) }}</select>
+                </div>
+                <div class="mb-3">
+                    <label class="form-label" for="fecha_programada">Fecha programada</label>
+                    <input type="date" class="form-control" id="fecha_programada" name="fecha_programada" value="{{ v.get('fecha_programada', '') }}" required>
+                </div>
+                <div class="mb-3">
+                    <label class="form-label" for="proveedor">Laboratorio / proveedor</label>
+                    <input type="text" class="form-control" id="proveedor" name="proveedor" maxlength="150" value="{{ v.get('proveedor', '') }}">
+                </div>
+                <div class="mb-3">
+                    <label class="form-label" for="responsable">Responsable interno</label>
+                    <select class="form-control" id="responsable" name="responsable">
+                        <option value="">-- Sin asignar --</option>
+                        {{ m.opciones(personal, v.get('responsable')) }}
+                    </select>
+                </div>
+                <div class="mb-3">
+                    <label class="form-label" for="observaciones">Observaciones</label>
+                    <textarea class="form-control" id="observaciones" name="observaciones" rows="2" maxlength="1000">{{ v.get('observaciones', '') }}</textarea>
+                </div>
+            </div>
+            <div class="hv-acciones">
+                <button type="submit" class="btn btn-primary">Programar</button>
+                <a class="btn btn-secondary" href="{{ url_for('cronograma_metrologia') }}">Cancelar</a>
+            </div>
+        </form>
+    </div>
+</div>
+{% endblock %}
